@@ -287,7 +287,7 @@ class GalleryView(QWidget):
 
         # Taille des vignettes : regroupée dans un bouton à menu (gain de place).
         self._size_slider = QSlider(Qt.Orientation.Horizontal)
-        self._size_slider.setMinimum(96)
+        self._size_slider.setMinimum(48)  # vignettes très petites (cf. backlog)
         self._size_slider.setMaximum(320)
         self._size_slider.setSingleStep(16)
         self._size_slider.setValue(self._thumb_size)

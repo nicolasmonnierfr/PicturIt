@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -68,16 +69,57 @@ class Metadata:
         return self.latitude is not None and self.longitude is not None
 
 
-def read(path: str) -> Metadata:
-    """Lit les métadonnées d'un fichier (dispatch photo/vidéo)."""
-    is_video = scanner.is_video(path)
+# --- Cache mémoire de métadonnées (durée de session, aucune écriture disque) ---
+# La lecture EXIF (photos) et surtout ffprobe (vidéos) est appelée plusieurs fois
+# par fichier (worker de vignette, tri par date, aperçu). On mémoïse le résultat,
+# invalidé automatiquement si le fichier change (clé = chemin + mtime + taille).
+_cache: dict[tuple, Metadata] = {}
+_cache_lock = threading.Lock()
+
+
+def _cache_key(path: str) -> tuple | None:
+    """Clé de cache incluant mtime/taille (None si le fichier est inaccessible)."""
     try:
-        size = os.path.getsize(path)
+        st = os.stat(path)
     except OSError:
-        size = 0
-    if is_video:
-        return _read_video(path, size)
-    return _read_photo(path, size)
+        return None
+    return (path, st.st_mtime_ns, st.st_size)
+
+
+def read(path: str) -> Metadata:
+    """Lit les métadonnées d'un fichier (dispatch photo/vidéo), avec cache.
+
+    Le calcul lourd (PIL/ffprobe) est volontairement fait **hors verrou** pour
+    ne pas sérialiser les workers : seule la table de cache est protégée.
+    """
+    key = _cache_key(path)
+    if key is not None:
+        with _cache_lock:
+            hit = _cache.get(key)
+        if hit is not None:
+            return hit
+
+    is_video = scanner.is_video(path)
+    size = key[2] if key is not None else 0
+    meta = _read_video(path, size) if is_video else _read_photo(path, size)
+
+    if key is not None:
+        with _cache_lock:
+            _cache[key] = meta
+    return meta
+
+
+def invalidate(path: str) -> None:
+    """Oublie les entrées de cache d'un fichier (après édition sur disque)."""
+    with _cache_lock:
+        for k in [k for k in _cache if k[0] == path]:
+            del _cache[k]
+
+
+def clear_cache() -> None:
+    """Vide tout le cache de métadonnées (changement de dossier source)."""
+    with _cache_lock:
+        _cache.clear()
 
 
 def has_gps(path: str) -> bool:

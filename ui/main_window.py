@@ -241,8 +241,15 @@ class MainWindow(QMainWindow):
         """Reparente le panneau d'aperçu dans la fenêtre plein écran."""
         if self._fs_active:
             return
-        self.map_panel.collapse()
-        self.preview_panel.set_mode(PreviewPanel.MODE_PREVIEW)
+        # En plein écran on affiche l'aperçu (image), jamais la carte : on
+        # repasse donc le switch sur « Aperçu » pour garder la cohérence
+        # affichage ⇄ switch (sinon il resterait bloqué sur « Carte »).
+        if self.map_switch.isChecked():
+            # Déclenche _on_toggle_map(False) : réduit la carte + mode Aperçu.
+            self.map_switch.setChecked(False)
+        else:
+            self.map_panel.collapse()
+            self.preview_panel.set_mode(PreviewPanel.MODE_PREVIEW)
         self._fullscreen.set_content(self.preview_panel)  # reparentage
         self._fs_active = True
         self._fullscreen.showFullScreen()

@@ -20,6 +20,20 @@ UX / Accessibilité — P3 (confort) :
 - [ ] Dialogue « Aide / Raccourcis » (touche ?)
 - [ ] Vérifier focus visible + ordre de tabulation
 
+## Bugs constatés
+-------------------------------------------------------------------------------
+(Tous corrigés lors de la séance de bugfix — voir « LIVRÉ ▸ Correctifs ».)
+
+- [x] Vignettes noires (photo comme vidéo) + GPS marqué absent : symptômes de
+      lenteur sur un PC sous-dimensionné → traités par l'optimisation des perfs
+      (décodage draft + conversion directe + cache métadonnées).
+- [x] Taille minimale des vignettes trop grande (now 48 px, ~2× plus petit).
+- [x] Clic sur une vignette de la carte : sélectionne la galerie sans zoomer
+      (le zoom/centrage passe au double-clic).
+- [x] Cohérence carte/détail en plein écran (le switch repasse sur « Aperçu »).
+- [x] Lenteur de chargement de la galerie au-delà de quelques dizaines de photos
+      (et lenteur GPS ressentie) → optimisée.
+
 
 ## REPOUSSÉ
 -------------------------------------------------------------------------------
@@ -38,6 +52,16 @@ Hors périmètre v1 (SPEC) :
 
 ## LIVRÉ
 -------------------------------------------------------------------------------
+Correctifs (séance de bugfix) :
+- [x] Perf chargement galerie : `load_qimage` utilise `Image.draft` (décodage
+      JPEG à échelle réduite) + conversion PIL→QImage directe (plus de round-trip
+      PNG) → ~6× plus rapide par vignette. Cache mémoire de métadonnées
+      (`core/metadata.read`, clé chemin+mtime+taille) → plus de lectures EXIF/
+      ffprobe redondantes (worker, tri par date, aperçu).
+- [x] Taille mini des vignettes abaissée à 48 px.
+- [x] Clic vignette carte = sélection galerie (zoom au double-clic).
+- [x] Switch carte/détail cohérent à l'entrée en plein écran.
+
 Édition & aperçu :
 - [x] Renommage basique (préfixe, depuis date/heure) — annulable + journalisé
 - [x] Zoom / déplacement dans l'aperçu (molette / glisser / double-clic)
@@ -70,4 +94,4 @@ Accessibilité (revue P1) :
 Identité & packaging :
 - [x] Renommage de l'app en PicturIt + icône (exe / fenêtre / installeur)
 - [x] Ouverture automatique en plein écran (fenêtre maximisée)
-- [x] Build PyInstaller allégé + installeur Inno Setup (PicturIt-Setup-1.0.0.exe)
+- [x] Build PyInstaller allégé + installeur Inno Setup (PicturIt-Setup-1.0.1.exe)

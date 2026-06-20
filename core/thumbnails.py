@@ -12,8 +12,6 @@ Aucune persistance disque (cf. SPEC 2).
 
 from __future__ import annotations
 
-import io
-
 from PySide6.QtCore import (
     QBuffer,
     QByteArray,
@@ -55,17 +53,34 @@ def load_qimage(path: str, max_side: int | None = None) -> QImage | None:
 
     Passe par Pillow pour gérer HEIC, l'orientation EXIF et les formats
     exotiques. Renvoie None si le fichier est illisible/corrompu.
+
+    Perf : quand on ne veut qu'une vignette (*max_side* fixé), ``Image.draft``
+    laisse le décodeur JPEG décoder à échelle réduite (1/2, 1/4, 1/8…) — gain
+    majeur sur les grandes photos. La conversion PIL → QImage est faite en
+    direct (octets RGBA bruts), sans aller-retour PNG coûteux.
     """
     try:
         with Image.open(path) as img:
+            # Décodage à échelle réduite si on ne produit qu'une vignette
+            # (sans effet sur les formats qui ne gèrent pas draft, ex. PNG/HEIC).
+            if max_side is not None:
+                try:
+                    img.draft(None, (max_side, max_side))
+                except Exception:  # noqa: BLE001 — draft optionnel
+                    pass
             img = ImageOps.exif_transpose(img)
             if max_side is not None:
                 img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
             img = img.convert("RGBA")
-            buffer = io.BytesIO()
-            img.save(buffer, format="PNG")
-            qimg = QImage()
-            qimg.loadFromData(buffer.getvalue(), "PNG")
+            width, height = img.size
+            # Conversion directe vers QImage (octets RGBA), copie pour posséder
+            # le tampon avant que les octets Python ne soient libérés.
+            qimg = QImage(
+                img.tobytes("raw", "RGBA"),
+                width,
+                height,
+                QImage.Format.Format_RGBA8888,
+            ).copy()
             return qimg if not qimg.isNull() else None
     except Exception:  # noqa: BLE001 — fichier corrompu/illisible : pas de crash
         return None
@@ -160,6 +175,7 @@ class ThumbnailManager(QObject):
         self._gps.clear()
         self._coords.clear()
         self._pending.clear()
+        metadata.clear_cache()
 
     def thumb_data_url(self, path: str, size: int = 72) -> str:
         """Renvoie la vignette en cache encodée en data URL base64 (pour la carte)."""
@@ -184,6 +200,7 @@ class ThumbnailManager(QObject):
         self._gps.pop(path, None)
         self._coords.pop(path, None)
         self._pending.discard(path)
+        metadata.invalidate(path)
 
     def rekey(self, old_path: str, new_path: str) -> None:
         """Réaffecte les données en cache à un nouveau chemin (fichier déplacé)."""

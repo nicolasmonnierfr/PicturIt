@@ -68,9 +68,13 @@
         m.photoId = p.id;
         m.bindPopup(popupHtml(p));  // vignette + nom dans le popup
         m.on('click', function () {
-          // Centrer et zoomer sur la photo, puis prévenir la galerie.
-          map.setView(m.getLatLng(), Math.max(map.getZoom(), 14));
+          // Simple clic = sélectionner la photo dans la galerie (sans déplacer
+          // ni zoomer la carte ; le zoom est réservé au double-clic).
           if (bridge) { bridge.selectMarkers(JSON.stringify([p.id])); }
+        });
+        m.on('dblclick', function () {
+          // Double-clic = centrer et zoomer sur la photo.
+          map.setView(m.getLatLng(), Math.max(map.getZoom(), 14));
         });
         markersById[p.id] = m;
         cluster.addLayer(m);

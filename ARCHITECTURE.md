@@ -28,7 +28,7 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 | Fichier | Rôle | Points clés |
 |---|---|---|
 | `scanner.py` | Scan récursif, formats | `MediaFile(path, section, is_video, size)` ; `scan()`→`[(section, [MediaFile])]` ; `is_video()`, `section_key()` |
-| `metadata.py` | EXIF photos + ffprobe vidéos | `Metadata` (date, lat/lon, dims, durée, EXIF étendu) ; lit GPS via Pillow `getexif().get_ifd()` |
+| `metadata.py` | EXIF photos + ffprobe vidéos | `Metadata` (date, lat/lon, dims, durée, EXIF étendu) ; lit GPS via Pillow `getexif().get_ifd()` ; **cache mémoire** (clé chemin+mtime+taille) → `read()` mémoïsé, `invalidate`/`clear_cache` |
 | `geo.py` | GPS | `dms_to_decimal` (gère tuples piexif **et** IFDRational Pillow) ; `parse_iso6709` ; `haversine_m` |
 | `fftools.py` | Localise ffmpeg/ffprobe | ordre : `_MEIPASS/bin` → `./bin` → PATH ; `run()` sans fenêtre console |
 | `thumbnails.py` | Vignettes + cache RAM | `ThumbnailManager` (QThreadPool) ; overlays (play, no-GPS, bordure doublon) ; `thumb_data_url` (base64 carte) |
@@ -142,6 +142,16 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
     souris** sur la cible reste la voie fiable pour copier.
 14. Test : `MainWindowHandle` (.NET) n'est **pas fiable** sur `python.exe` — ne
     pas s'y fier pour mesurer le temps de démarrage en dev.
+15. **Perf vignettes** : `thumbnails.load_qimage` appelle `Image.draft` (décodage
+    JPEG à échelle réduite) et convertit PIL→QImage en direct (octets RGBA, pas
+    de PNG). Ne pas réintroduire de round-trip PNG. Le `draft` est sans effet sur
+    PNG/HEIC (try/except silencieux).
+16. **Cache métadonnées** (`metadata._cache`, sous `threading.Lock`) : le calcul
+    lourd (PIL/ffprobe) est fait **hors verrou** pour préserver le parallélisme
+    des workers. Invalidé automatiquement si mtime/taille changent ; explicitement
+    via `metadata.invalidate(path)` (appelé par `ThumbnailManager.invalidate`
+    après édition) et `clear_cache()` (par `ThumbnailManager.clear`, nouveau
+    dossier/taille). Si une édition disque n'est pas reflétée, regarder là.
 
 ---
 
@@ -160,7 +170,7 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
 - **Tests headless** : exécuter un script avec `QT_QPA_PLATFORM=offscreen` ; pour
   la carte/WebEngine, poser `AA_ShareOpenGLContexts` avant `QApplication`.
 - **Build** : `pyinstaller build.spec --noconfirm --clean` → `dist/PicturIt/`.
-- **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.0.0.exe`.
+- **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.0.1.exe`.
 
 > ⚠️ Aucun harnais de tests automatisés n'est versionné : la validation s'est
 > faite par scripts offscreen jetables + captures. Un dossier `tests/` serait un

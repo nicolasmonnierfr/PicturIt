@@ -90,7 +90,7 @@ installeur avec **Inno Setup** (`installer.iss`) :
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
 
-→ produit `installer_output/PicturIt-Setup-1.0.0.exe` : installation dans
+→ produit `installer_output/PicturIt-Setup-1.0.1.exe` : installation dans
 Program Files (ou par utilisateur, au choix), raccourcis menu Démarrer / Bureau,
 et désinstalleur. Aucune dépendance à installer côté utilisateur final.
 
@@ -122,3 +122,13 @@ et désinstalleur. Aucune dépendance à installer côté utilisateur final.
 - [x] **Incrément 8** — Packaging PyInstaller (`build.spec`) : mode dossier ou
   mono-exe (`PICTURIT_ONEFILE=1`), bundle allégé (DevTools/locales/modules Qt
   inutiles retirés). Voir « Construction de l'exécutable » ci-dessus.
+
+## Historique des versions
+
+- **1.0.1** — Correctifs et perfs : chargement de la galerie nettement accéléré
+  (décodage `Image.draft` + conversion PIL→QImage directe, ~6× plus rapide par
+  vignette ; cache mémoire des métadonnées EXIF/ffprobe). Taille minimale des
+  vignettes abaissée à 48 px. Clic sur un marqueur de la carte : sélectionne la
+  galerie (le zoom passe au double-clic). Cohérence du switch Aperçu/Carte en
+  plein écran.
+- **1.0.0** — Première version complète (incréments 1 à 8).

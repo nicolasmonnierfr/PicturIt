@@ -59,8 +59,22 @@ Correctifs (séance de bugfix) :
       (`core/metadata.read`, clé chemin+mtime+taille) → plus de lectures EXIF/
       ffprobe redondantes (worker, tri par date, aperçu).
 - [x] Taille mini des vignettes abaissée à 48 px.
-- [x] Clic vignette carte = sélection galerie (zoom au double-clic).
 - [x] Switch carte/détail cohérent à l'entrée en plein écran.
+
+Galerie & carte (séance 2) :
+- [x] Bouton ✕ de fermeture sur la vue plein écran (en plus d'Échap).
+- [x] Boutons d'outils de l'aperçu/plein écran plus visibles (fond contrasté).
+- [x] Sélection des vignettes plus visible (fond bleu + bordure au lieu du
+      grisage discret).
+- [x] Coches séparées « Doublons » (identiques, rouge) et « Similaires »
+      (orange) : voir l'une, l'autre ou les deux (analyse calculée une seule
+      fois, simple re-filtrage ensuite).
+- [x] Ordre de tri croissant/décroissant (bouton ▲/▼ à côté de « Trier par »).
+- [x] « Grouper par » : dossier (défaut) / jour / semaine / mois (date de prise
+      de vue ; médias sans date regroupés à part, en dernier).
+- [x] Clic sur un marqueur/cluster de la carte = filtre la galerie sur ces
+      photos (masque les autres) + bannière « ✕ Supprimer le filtre » ; le
+      centrage/zoom carte est réservé au double-clic.
 
 Édition & aperçu :
 - [x] Renommage basique (préfixe, depuis date/heure) — annulable + journalisé
@@ -94,4 +108,4 @@ Accessibilité (revue P1) :
 Identité & packaging :
 - [x] Renommage de l'app en PicturIt + icône (exe / fenêtre / installeur)
 - [x] Ouverture automatique en plein écran (fenêtre maximisée)
-- [x] Build PyInstaller allégé + installeur Inno Setup (PicturIt-Setup-1.0.1.exe)
+- [x] Build PyInstaller allégé + installeur Inno Setup (PicturIt-Setup-1.1.0.exe)

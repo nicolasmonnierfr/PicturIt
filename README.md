@@ -90,7 +90,7 @@ installeur avec **Inno Setup** (`installer.iss`) :
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
 
-→ produit `installer_output/PicturIt-Setup-1.0.1.exe` : installation dans
+→ produit `installer_output/PicturIt-Setup-1.1.0.exe` : installation dans
 Program Files (ou par utilisateur, au choix), raccourcis menu Démarrer / Bureau,
 et désinstalleur. Aucune dépendance à installer côté utilisateur final.
 
@@ -125,6 +125,14 @@ et désinstalleur. Aucune dépendance à installer côté utilisateur final.
 
 ## Historique des versions
 
+- **1.1.0** — Nouvelles fonctionnalités galerie & carte. **Tri** : bouton d'ordre
+  croissant/décroissant ; **« Grouper par »** dossier (défaut) / jour / semaine /
+  mois (date de prise de vue). **Doublons** : coches séparées « Doublons »
+  (identiques) et « Similaires » pour voir l'une, l'autre ou les deux. **Carte** :
+  un clic sur un marqueur **filtre** la galerie sur ces photos (masque les autres)
+  avec une bannière « Supprimer le filtre » ; le zoom reste au double-clic.
+  **Plein écran** : bouton ✕ de fermeture. **Lisibilité** : sélection des
+  vignettes plus visible (fond bleu + bordure) et boutons d'édition contrastés.
 - **1.0.1** — Correctifs et perfs : chargement de la galerie nettement accéléré
   (décodage `Image.draft` + conversion PIL→QImage directe, ~6× plus rapide par
   vignette ; cache mémoire des métadonnées EXIF/ffprobe). Taille minimale des

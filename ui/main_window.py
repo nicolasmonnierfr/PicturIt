@@ -167,7 +167,9 @@ class MainWindow(QMainWindow):
         # Carte ⇄ galerie (sélection bidirectionnelle + marqueurs).
         self.gallery_view.geo_points_changed.connect(self.map_panel.set_points)
         self.gallery_view.selection_changed.connect(self.map_panel.set_highlight)
-        self.map_panel.markers_selected.connect(self.gallery_view.select_paths)
+        # Clic sur un marqueur/cluster → filtre la galerie sur ces photos
+        # (masque les autres) plutôt que de simplement les sélectionner.
+        self.map_panel.markers_selected.connect(self.gallery_view.filter_to_paths)
         self.map_panel.enlarge_toggled.connect(self._on_map_enlarge)
 
     def _setup_shortcuts(self) -> None:

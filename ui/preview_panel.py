@@ -61,6 +61,23 @@ def _fmt_datetime(value) -> str:
     return value.strftime("%d/%m/%Y %H:%M:%S") if value else "—"
 
 
+# Style des boutons de la barre d'édition : rendu lisible **y compris** en plein
+# écran (le fond sombre de la fenêtre plein écran se propageait aux boutons, qui
+# devenaient invisibles). S'applique aux QPushButton et au QToolButton (convertir).
+_EDIT_BTN_STYLE = (
+    "QPushButton, QToolButton {"
+    " background:#5a5f66; color:#f5f5f5; border:1px solid #80868f;"
+    " border-radius:4px; font-size:14px; }"
+    "QPushButton:hover, QToolButton:hover { background:#6c727a; }"
+    "QPushButton:pressed, QToolButton:pressed { background:#4a4e54; }"
+    "QPushButton:checked, QToolButton:checked {"
+    " background:#2d6cdf; border-color:#7db4ff; }"
+    "QPushButton:disabled, QToolButton:disabled {"
+    " background:#3a3d42; color:#888; border-color:#55585e; }"
+    "QToolButton::menu-indicator { width:0px; }"
+)
+
+
 class _ZoomableImageView(QGraphicsView):
     """Vue image avec zoom (molette) et déplacement (glisser), sans modif fichier."""
 
@@ -269,6 +286,7 @@ class PreviewPanel(QWidget):
         self._btn_convert.setToolTip("Convertir le format")
         self._btn_convert.setAccessibleName("Convertir le format")
         self._btn_convert.setFixedSize(28, 28)
+        self._btn_convert.setStyleSheet(_EDIT_BTN_STYLE)
         self._btn_convert.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         convert_menu = QMenu(self._btn_convert)
         for label, ext in (("JPEG", ".jpg"), ("PNG", ".png"),
@@ -304,6 +322,7 @@ class PreviewPanel(QWidget):
         btn.setToolTip(tooltip)
         btn.setAccessibleName(a11y)
         btn.setFixedSize(28, 28)
+        btn.setStyleSheet(_EDIT_BTN_STYLE)
         btn.setCheckable(checkable)
         if checkable:
             btn.toggled.connect(slot)

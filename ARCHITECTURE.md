@@ -45,7 +45,7 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 | `gallery_view.py` | Galerie (sections, vignettes, tri/filtre/recherche, doublons) | `media_selected`, `selection_changed`, `geo_points_changed`, `loading_progress/finished`, `status`, `rename_requested`, `rotate_selection_requested`, `summary_changed`, `fullscreen_requested` |
 | `preview_panel.py` | Aperçu image zoomable / lecteur vidéo / métadonnées + barre d'édition | `rotate_requested(bool)`, `crop_committed(box)`, `convert_requested(ext)` |
 | `map_panel.py` | Carte Leaflet (QWebEngineView + QWebChannel) | `markers_selected(list)`, `enlarge_toggled(bool)` |
-| `fullscreen.py` | Fenêtre plein écran qui **héberge le PreviewPanel reparenté** | `nav(int)`, `closed` |
+| `fullscreen.py` | Fenêtre plein écran qui **héberge le PreviewPanel reparenté** ; fermeture par **Échap ou bouton ✕** flottant (haut-droit) | `nav(int)`, `closed` |
 | `widgets.py` | `ToggleSlider` (mini-bascule), `make_crop_icon` | — |
 
 ---
@@ -55,9 +55,11 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 ### Chargement
 `nav_panel` (clic/Entrée dossier) → `source_changed` → `MainWindow._set_source`
 → `gallery.load_media(dir)` → `scanner.scan` → `_media_by_path` (**source de
-vérité**) → `_compute_view()` (filtre+recherche+tri) → `_display(list)` → crée
-une section (`_SectionListView`) par sous-dossier + `_append_item` →
-`ThumbnailManager.request`.
+vérité**) → `_compute_view()` (filtre carte + filtre + recherche + tri avec
+ordre asc/desc) → `_display(list)` → `_section_of(media)` donne (libellé, clé)
+de section selon le **regroupement** (`dir` = sous-dossier par défaut, ou
+`day`/`week`/`month` = date de prise de vue) → une section (`_SectionListView`)
+par groupe + `_append_item` → `ThumbnailManager.request`.
 
 ### Vignettes (asynchrone)
 `request` → worker QThreadPool → `thumbnail_ready(path, pixmap, has_gps)` /
@@ -71,7 +73,10 @@ barre de progression. **Cache RAM uniquement** ; `rekey`/`duplicate` (move/copy)
   `geo_points_changed([{id,lat,lon,name,thumb}])` → `map_panel.set_points` →
   `_MapBridge.pointsChanged` (QWebChannel) → JS `rebuild` (markercluster).
 - Clic marqueur/cluster (JS) → `bridge.selectMarkers` → `markers_selected` →
-  `gallery.select_paths`.
+  `gallery.filter_to_paths` : **filtre** la galerie sur ces photos (masque les
+  autres) + bannière « Supprimer le filtre » (`_path_filter`). Double-clic
+  marqueur = centrer/zoomer (map.html). `select_paths` reste utilisé ailleurs
+  (plein écran, menu contextuel).
 - Sélection galerie → `selection_changed` → `map_panel.set_highlight`.
 - **Agrandir** : le même `MapPanel` est **reparenté** entre
   `preview_panel.map_container` (colonne droite) et `center_map_host` (centre).
@@ -123,7 +128,11 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
    édition → `invalidate` ; changement de taille → `clear` + ré-affichage.
 6. **`_media_by_path`** est la source de vérité ; il est maintenu dans
    `_add_path`/`_remove_item`. Le tri/filtre/recherche recalcule la vue via
-   `_compute_view()` ; en mode doublons la base est l'ensemble groupé.
+   `_compute_view()` ; en mode doublons la base est l'ensemble groupé, **filtré
+   par catégorie** : deux coches indépendantes (`duplicates_switch` = identiques,
+   `similars_switch` = similaires) alimentent `_dup_categories` ; l'analyse
+   (`_DuplicatesWorker`) n'est calculée **qu'une fois**, cocher/décocher une
+   catégorie ne fait que re-filtrer (`_base_media` via `DupIndex.color_of`).
 7. **Édition « Remplacer »** est destructive et **non annulable** (pas de
    sauvegarde de l'original). Le mode « Copier » accumule sur un seul `_copie`.
 8. **ffmpeg/ffprobe** : si absents, vignette vidéo générique + métadonnées vidéo
@@ -170,7 +179,7 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
 - **Tests headless** : exécuter un script avec `QT_QPA_PLATFORM=offscreen` ; pour
   la carte/WebEngine, poser `AA_ShareOpenGLContexts` avant `QApplication`.
 - **Build** : `pyinstaller build.spec --noconfirm --clean` → `dist/PicturIt/`.
-- **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.0.1.exe`.
+- **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.1.0.exe`.
 
 > ⚠️ Aucun harnais de tests automatisés n'est versionné : la validation s'est
 > faite par scripts offscreen jetables + captures. Un dossier `tests/` serait un

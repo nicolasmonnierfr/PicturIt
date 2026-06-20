@@ -1,0 +1,10 @@
+# Dépendances Python de PicturIt
+# Cibler Python 3.12 (PySide6 requiert >=3.10, <3.15)
+
+PySide6>=6.6           # UI Qt 6 + QtWebEngine + QtMultimedia
+Pillow>=10.0           # Lecture images, vignettes, EXIF de base
+pillow-heif>=0.16      # Support HEIC/HEIF en tant qu'opener Pillow
+piexif>=1.1.3          # Lecture/écriture EXIF fine (GPS)
+send2trash>=1.8        # Suppression vers la corbeille Windows
+
+# ffmpeg / ffprobe : binaires externes (voir README), PAS des paquets pip.

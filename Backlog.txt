@@ -1,0 +1,73 @@
+Backlog — PicturIt
+==================
+(Édite librement ce fichier pour prioriser. Sections : À FAIRE / REPOUSSÉ / LIVRÉ.)
+
+
+## À FAIRE
+-------------------------------------------------------------------------------
+Fonctionnalités :
+- [ ] Diaporama (défilement auto toutes les N secondes)
+
+UX / Accessibilité — P2 (importantes) :
+- [ ] Édition « Remplacer » : avertissement (destructif, non annulable) ou
+      indicateur de mode plus visible
+- [ ] Afficher la valeur du curseur de taille des vignettes (ex. « 160 px »)
+- [ ] Barre de progression pour l'analyse des doublons
+
+UX / Accessibilité — P3 (confort) :
+- [ ] Tooltips restants (bouton « Parcourir », mini-slider Aperçu/Carte)
+- [ ] Thème clair : remplacer couleurs en dur (#3a3a3a, #888) par la palette
+- [ ] Dialogue « Aide / Raccourcis » (touche ?)
+- [ ] Vérifier focus visible + ordre de tabulation
+
+
+## REPOUSSÉ
+-------------------------------------------------------------------------------
+Idées plus lourdes ou à rediscuter (effort « moyen+ » ou hors périmètre) :
+- [ ] Regrouper la galerie par jour (sections par date au lieu de par dossier)
+- [ ] Comparaison de deux photos côte à côte
+- [ ] Histogramme de l'image dans l'aperçu
+- [ ] Décalage de date EXIF (correction de fuseau) — écrit sur disque
+
+Hors périmètre v1 (SPEC) :
+- Favoris / notes / étoiles persistants (nécessiterait du stockage)
+- Mots-clés / tags (abandonnés en SPEC)
+- Suppression automatique de doublons (jamais d'auto-suppression)
+- Similarité visuelle / perceptual hash (hors v1)
+
+
+## LIVRÉ
+-------------------------------------------------------------------------------
+Édition & aperçu :
+- [x] Renommage basique (préfixe, depuis date/heure) — annulable + journalisé
+- [x] Zoom / déplacement dans l'aperçu (molette / glisser / double-clic)
+- [x] Barre d'outils aperçu : pivoter (lossless JPEG) / recadrer (interactif) /
+      convertir (JPEG/PNG/GIF/BMP), boutons carrés + icône de recadrage
+- [x] Bascules en mini-sliders (Aperçu/Carte et Remplacer/Copier)
+- [x] Aperçu plein écran (F / double-clic) avec navigation ←/→, Échap
+- [x] EXIF étendu (appareil, objectif, ISO, ouverture, focale, vitesse)
+- [x] Métadonnées sous l'image d'aperçu
+
+Galerie & tri :
+- [x] Taille des vignettes réglable (regroupée dans un bouton « Taille ▾ »)
+- [x] Trier (nom/date/taille), filtres (photos/vidéos/avec-sans GPS), recherche
+- [x] Barre d'outils galerie désencombrée (libellés en infobulles)
+- [x] Ctrl+A / Échap ; résumé sélection + statistiques dossier (barre de statut)
+- [x] Menu contextuel : ouvrir (app défaut) / Explorateur / copier le chemin /
+      pivoter la sélection
+- [x] Créer + épingler un nouveau dossier cible (bouton accès rapide)
+- [x] Doublons : « sélectionner tous sauf le 1er de chaque groupe »
+- [x] Confirmation avant suppression multiple (> 1 fichier)
+
+Carte :
+- [x] Marqueur carte → centrer/zoomer + popup avec vignette et nom
+
+Accessibilité (revue P1) :
+- [x] Charger un dossier source au clavier (arborescence : `activated` connecté)
+- [x] accessibleName sur les boutons icônes (⟲ ⟳)
+- [x] Statut « sans GPS » dans l'infobulle de la vignette
+
+Identité & packaging :
+- [x] Renommage de l'app en PicturIt + icône (exe / fenêtre / installeur)
+- [x] Ouverture automatique en plein écran (fenêtre maximisée)
+- [x] Build PyInstaller allégé + installeur Inno Setup (PicturIt-Setup-1.0.0.exe)

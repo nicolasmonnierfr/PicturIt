@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Leaflet + Leaflet.markercluster depuis CDN (carte en ligne, cf. SPEC 4.4) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; background: #2b2b2b; }
+    .leaflet-container { background: #2b2b2b; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <!-- Pont QWebChannel : injecté par Python (placeholder ci-dessous) -->
+  <!--QWEBCHANNEL_JS-->
+
+  <script>
+    // Carte centrée par défaut sur le monde ; ajustée aux points reçus.
+    const map = L.map('map').setView([20, 0], 2);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    const cluster = L.markerClusterGroup();
+    map.addLayer(cluster);
+
+    // La carte est souvent initialisée alors que son conteneur est masqué
+    // (mode Aperçu) → recalcul de la taille dès qu'elle change/s'affiche,
+    // sinon le rendu reste blanc (piège Leaflet classique).
+    const resizeObserver = new ResizeObserver(function () { map.invalidateSize(); });
+    resizeObserver.observe(document.getElementById('map'));
+
+    let bridge = null;
+    let markersById = {};
+    let highlighted = new Set();
+
+    function applyHighlight() {
+      const hasSelection = highlighted.size > 0;
+      Object.values(markersById).forEach(function (m) {
+        const on = highlighted.has(m.photoId);
+        // Atténue les marqueurs non sélectionnés quand une sélection existe.
+        m.setOpacity(hasSelection ? (on ? 1.0 : 0.3) : 1.0);
+      });
+    }
+
+    function popupHtml(p) {
+      const img = p.thumb
+        ? '<img src="' + p.thumb + '" style="max-width:120px;max-height:120px;' +
+          'display:block;margin:0 auto 4px;border-radius:4px;">'
+        : '';
+      const name = p.name ? '<div style="text-align:center;font-size:11px;">' +
+        p.name + '</div>' : '';
+      return '<div>' + img + name + '</div>';
+    }
+
+    function rebuild(points) {
+      cluster.clearLayers();
+      markersById = {};
+      points.forEach(function (p) {
+        const m = L.marker([p.lat, p.lon]);
+        m.photoId = p.id;
+        m.bindPopup(popupHtml(p));  // vignette + nom dans le popup
+        m.on('click', function () {
+          // Centrer et zoomer sur la photo, puis prévenir la galerie.
+          map.setView(m.getLatLng(), Math.max(map.getZoom(), 14));
+          if (bridge) { bridge.selectMarkers(JSON.stringify([p.id])); }
+        });
+        markersById[p.id] = m;
+        cluster.addLayer(m);
+      });
+      applyHighlight();
+      if (points.length > 0) {
+        try { map.fitBounds(cluster.getBounds().pad(0.2)); } catch (e) {}
+      }
+    }
+
+    // Clic sur un cluster → sélectionne toutes les photos qu'il contient.
+    cluster.on('clusterclick', function (e) {
+      const ids = e.layer.getAllChildMarkers().map(function (m) { return m.photoId; });
+      if (bridge) { bridge.selectMarkers(JSON.stringify(ids)); }
+    });
+
+    function setHighlight(ids) {
+      highlighted = new Set(ids);
+      applyHighlight();
+    }
+
+    // Connexion au pont Python via QWebChannel.
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+      bridge = channel.objects.bridge;
+      bridge.pointsChanged.connect(function (s) { rebuild(JSON.parse(s)); });
+      bridge.highlightChanged.connect(function (s) { setHighlight(JSON.parse(s)); });
+      bridge.jsReady();  // signale à Python que la carte est prête
+    });
+  </script>
+</body>
+</html>

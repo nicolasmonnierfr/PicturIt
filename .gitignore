@@ -1,0 +1,18 @@
+# Environnement virtuel
+.venv/
+
+# Artefacts de build / packaging
+build/
+dist/
+installer_output/
+__pycache__/
+*.pyc
+
+# Binaires externes ffmpeg/ffprobe (~194 Mo) — voir README pour les obtenir
+bin/ffmpeg.exe
+bin/ffprobe.exe
+
+# Fichiers temporaires / captures / logs jetables
+_*.png
+_*.log
+*.tmp

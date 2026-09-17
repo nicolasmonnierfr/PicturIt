@@ -295,10 +295,12 @@ class PreviewPanel(QWidget):
             self._on_crop_clicked, checkable=True)
         self._btn_crop.setIcon(make_crop_icon())
 
+        # La validation n'a de sens qu'une fois le recadrage engagé : elle reste
+        # masquée le reste du temps plutôt que d'occuper la barre en grisé.
         self._btn_crop_apply = self._tool_button(
             "✓", "Appliquer le recadrage", "Appliquer le recadrage",
             self._on_crop_apply)
-        self._btn_crop_apply.setEnabled(False)
+        self._btn_crop_apply.setVisible(False)
 
         self._btn_convert = QToolButton()
         self._btn_convert.setText("⇄")
@@ -365,7 +367,7 @@ class PreviewPanel(QWidget):
 
     def _on_crop_toggled(self, checked: bool) -> None:
         self.image_view.set_crop_mode(checked)
-        self._btn_crop_apply.setEnabled(checked)
+        self._btn_crop_apply.setVisible(checked)
 
     def _on_crop_apply(self) -> None:
         box = self.image_view.crop_box()
@@ -377,8 +379,11 @@ class PreviewPanel(QWidget):
         for btn in self._edit_buttons:
             btn.setEnabled(enabled)
         if not enabled:
+            # setChecked n'émet rien si la case était déjà décochée : on masque
+            # donc explicitement, sinon la validation resterait à l'écran en
+            # passant d'une photo en cours de recadrage à une vidéo.
             self._btn_crop.setChecked(False)
-            self._btn_crop_apply.setEnabled(False)
+            self._btn_crop_apply.setVisible(False)
 
     def _build_video_widget(self) -> QWidget:
         """Construit le lecteur vidéo : surface + barre de contrôle complète.

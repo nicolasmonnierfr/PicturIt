@@ -610,6 +610,31 @@ def make_placeholder_pixmap(text: str, size: int = THUMB_SIZE) -> QPixmap:
     return pixmap
 
 
+def pad_to_square(pixmap: QPixmap, size: int) -> QPixmap:
+    """Centre la vignette sur un canevas carré de *size* pixels.
+
+    Sans cela, une photo en portrait produit une icône plus étroite qu'une
+    photo en paysage : le cadre de sélection épouse l'icône et n'entoure donc
+    pas la même surface d'une carte à l'autre. Le canevas carré aligne toutes
+    les vignettes sur la même empreinte, quelle que soit leur orientation.
+
+    Le fond reste transparent : c'est la cellule, en dessous, qui porte la
+    couleur de sélection.
+    """
+    if pixmap.isNull():
+        return pixmap
+    if pixmap.width() == size and pixmap.height() == size:
+        return pixmap
+    canevas = QPixmap(size, size)
+    canevas.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(canevas)
+    painter.drawPixmap(
+        (size - pixmap.width()) // 2, (size - pixmap.height()) // 2, pixmap
+    )
+    painter.end()
+    return canevas
+
+
 def overlay_play(pixmap: QPixmap) -> QPixmap:
     """Superpose une icône « play » au centre (distingue les vidéos)."""
     result = QPixmap(pixmap)

@@ -65,6 +65,7 @@ from core.thumbnails import (
     overlay_border,
     overlay_nogps,
     overlay_play,
+    pad_to_square,
 )
 
 # Couleurs du code doublons/similaires (cf. SPEC 4.7).
@@ -821,6 +822,7 @@ class GalleryView(QWidget):
         item.setData(path, PATH_ROLE)
         item.setToolTip(path)
         item.setIcon(self._video_icon if is_video else self._pending_icon)
+        item.setSizeHint(self._cell_size())
 
         section = self._sections[section_name]
         section.model.appendRow(item)
@@ -834,6 +836,19 @@ class GalleryView(QWidget):
         # quatre étapes ont été chronométrées à 0,05 ms pièce, le layout Qt
         # n'a jamais été en cause. Inutile d'instrumenter ce chemin très chaud.
         self._thumbnails.request(path, is_video, self._thumb_size)
+
+    def _cell_size(self) -> QSize:
+        """Empreinte d'une carte, identique pour toutes.
+
+        Qt dimensionne sinon chaque item d'après son contenu : une vignette
+        en portrait donne une carte plus étroite, et la sélection n'entoure
+        pas la même surface d'une photo à l'autre. On laisse quelques pixels
+        sous la taille de grille pour la gouttière entre cartes.
+        """
+        return QSize(
+            self._thumb_size + _CELL_PADDING_W - 4,
+            self._thumb_size + _CELL_PADDING_H - 4,
+        )
 
     def _remove_item(self, path: str) -> None:
         """Retire un item de la galerie (et sa section si elle devient vide)."""
@@ -1269,7 +1284,13 @@ class GalleryView(QWidget):
 
     # --- Réception des vignettes ---
     def _decorate(self, path: str, pixmap, has_gps: bool):
-        """Compose la vignette : play (vidéo) + badge sans GPS + bordure doublon."""
+        """Compose la vignette : play (vidéo) + badge sans GPS + bordure doublon.
+
+        Le canevas est mis au carré **avant** les surcharges : les badges se
+        retrouvent ainsi au même endroit sur toutes les cartes, au lieu de
+        suivre les bords d'une image plus ou moins large.
+        """
+        pixmap = pad_to_square(pixmap, self._thumb_size)
         if scanner.is_video(path):
             pixmap = overlay_play(pixmap)
         if not has_gps:

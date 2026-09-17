@@ -145,6 +145,12 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
 4. **Doublons « identiques »** = hash **OU** (même taille ET même datetime). Des
    fichiers distincts de même taille + même datetime sont donc marqués identiques
    (conforme SPEC, mais surprenant sur des jeux de test artificiels).
+5bis. **Cartes de taille uniforme** : la vignette est centrée sur un canevas
+    carré (`pad_to_square`) et chaque item reçoit un `setSizeHint` explicite.
+    Sans l'un ou l'autre, Qt dimensionne la cellule d'après son contenu et le
+    cadre de sélection n'entoure pas la même surface selon l'orientation de la
+    photo. Toute modification de la taille des vignettes doit passer par
+    `_cell_size()`.
 5. **Vignette = clé par chemin** : après move/copy → `rekey`/`duplicate` ; après
    édition → `invalidate` ; changement de taille → `clear` + ré-affichage.
 6bis. **Mode non récursif et `_is_within_source`** : en mode « dossier seul », un

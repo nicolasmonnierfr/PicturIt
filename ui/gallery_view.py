@@ -404,7 +404,7 @@ class GalleryView(QWidget):
         self._folder_label = QLabel()
         self._folder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._folder_label.setStyleSheet(
-            "font-size:17px; font-weight:bold; padding:2px 4px 6px 4px;"
+            "font-size:26px; font-weight:bold; padding:4px 4px 8px 4px;"
         )
         self._folder_label.setVisible(False)  # rien à annoncer au démarrage
         # Ajouté au layout plus bas : le titre se place **sous** la barre de

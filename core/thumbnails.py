@@ -425,10 +425,6 @@ class ThumbnailManager(QObject):
         # chaque reconstruction du lot de points.
         self._data_urls: dict[tuple[str, int], str] = {}
 
-    def capacity(self) -> int:
-        """Nombre de tâches que le pool peut traiter de front."""
-        return max(1, self._pool.maxThreadCount())
-
     def clear(self) -> None:
         """Vide le cache et les tâches en attente (nouveau dossier source)."""
         self._cache.clear()

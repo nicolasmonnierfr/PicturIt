@@ -45,7 +45,7 @@ pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Environ 190 tests couvrent `core/` (logique métier) à 94 %, en 3 secondes.
+Les tests couvrent `core/` (logique métier) à plus de 90 %, en quelques secondes.
 Aucun test ne crée de fenêtre Qt : ni écran ni QtWebEngine ne sont nécessaires,
 et ffmpeg/ffprobe sont simulés — la suite tourne donc sur une machine nue.
 
@@ -173,6 +173,9 @@ et désinstalleur. Aucune dépendance à installer côté utilisateur final.
 
 ## État d'avancement
 
+La v1 est complète (incréments 1 à 8 ci-dessous) ; les évolutions ultérieures
+sont listées dans [Backlog.txt](Backlog.txt) et l'« Historique des versions ».
+
 - [x] **Incrément 1** — Squelette UI 3 colonnes.
 - [x] **Incrément 2** — Scan récursif + galerie (sections par sous-dossier) +
   vignettes photos en arrière-plan + barre de progression + aperçu image.
@@ -201,6 +204,17 @@ et désinstalleur. Aucune dépendance à installer côté utilisateur final.
   inutiles retirés). Voir « Construction de l'exécutable » ci-dessus.
 
 ## Historique des versions
+
+- **Non publié (depuis 1.1.0)** — **Réactivité** : le scan ne bloque plus
+  l'interface (un clic sur un disque la figeait plusieurs minutes) ; le clic
+  charge le dossier seul, le parcours récursif devient un geste explicite et
+  reste interruptible. **Vignettes** : ce qui est à l'écran se charge en
+  premier, les vidéos en dernier ; une seule lecture par photo, et la vignette
+  EXIF embarquée est exploitée quand le dossier s'y prête. **Correctifs** :
+  17,5 % des photos d'un dossier réel s'affichaient à tort comme illisibles
+  (JPEG/MPO d'iPhone jugés tronqués). **Diagnostic** : journal optionnel
+  (`--log` / `--log-perf`). **Interface** : contrôles vidéo complets, flèches
+  de navigation en plein écran, avertissement sur l'édition destructive.
 
 - **1.1.0** — Nouvelles fonctionnalités galerie & carte. **Tri** : bouton d'ordre
   croissant/décroissant ; **« Grouper par »** dossier (défaut) / jour / semaine /

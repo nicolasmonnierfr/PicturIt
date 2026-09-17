@@ -20,7 +20,8 @@ UX / Accessibilité — P3 (confort) :
 
 ## Bugs constatés
 -------------------------------------------------------------------------------
-(Tous corrigés lors de la séance de bugfix — voir « LIVRÉ ▸ Correctifs ».)
+(Tous corrigés à ce jour. Les plus récents en tête ; le détail des correctifs
+est en section LIVRÉ.)
 
 - [x] **Gel de l'application au clic sur un disque** : le scan récursif était
       exécuté sur le thread UI (`scanner.scan` appelé directement dans

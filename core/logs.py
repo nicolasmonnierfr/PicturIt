@@ -111,16 +111,7 @@ def get_logger(suffix: str = "") -> logging.Logger:
     return logging.getLogger(f"{LOGGER_NAME}.{suffix}" if suffix else LOGGER_NAME)
 
 
-def is_enabled() -> bool:
-    """True si la journalisation a été activée."""
-    return _configured
-
-
 def perf_enabled() -> bool:
     """True si les mesures de performance doivent être collectées."""
     return _perf_enabled
 
-
-def log_path_if_active() -> str | None:
-    """Chemin du fichier de log si la journalisation tourne, sinon None."""
-    return default_log_path() if _configured else None

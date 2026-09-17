@@ -249,13 +249,14 @@ travail est surtout de l'attente réseau. Réglable par `PICTURIT_THREADS`.
 ### Tests automatisés (`tests/`)
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest                              # ~190 tests, ~3 s
+.\.venv\Scripts\python.exe -m pytest                              # quelques secondes
 .\.venv\Scripts\python.exe -m pytest --cov=core --cov-report=term-missing
 ```
 
-Périmètre : **`core/` uniquement**, soit la logique métier sans Qt (94 % de
-couverture). Aucun test ne crée de `QApplication` : le harnais reste rapide et
-n'a besoin ni d'écran ni de QtWebEngine.
+Périmètre : **`core/` uniquement**, soit la logique métier sans Qt (plus de 90 %
+de couverture). Aucun test ne crée de `QApplication` : le harnais reste rapide
+et n'a besoin ni d'écran ni de QtWebEngine. Seul `test_header_strategy.py`
+importe PySide6, pour une classe de logique pure qui y réside.
 
 | Fichier | Couvre | Points notables |
 |---|---|---|

@@ -135,8 +135,11 @@ class _DropQuickList(QListWidget):
 class NavPanel(QWidget):
     """Panneau de navigation : arborescence + accès rapide."""
 
-    # Émis quand l'utilisateur choisit un dossier source (chemin absolu).
-    source_changed = Signal(str)
+    # Émis quand l'utilisateur choisit un dossier source :
+    # (chemin absolu, inclure les sous-dossiers ?).
+    # Le clic simple n'explore **jamais** les sous-dossiers : parcourir
+    # l'arborescence doit rester instantané, y compris sur une racine de disque.
+    source_changed = Signal(str, bool)
     # Émis quand une cible est activée (clic ou raccourci) : (path, copier).
     target_activated = Signal(str, bool)
     # Émis lors d'un glisser-déposer de fichiers : (paths, cible, copier).
@@ -209,17 +212,27 @@ class NavPanel(QWidget):
 
     # --- Arborescence (source + épinglage) ---
     def _on_tree_clicked(self, index) -> None:
-        """Clic gauche sur un dossier → le signale comme dossier source."""
+        """Clic gauche sur un dossier → le charge, **sans** ses sous-dossiers.
+
+        Explorer récursivement est une action coûteuse (plusieurs minutes sur
+        un disque entier) : elle doit rester un geste délibéré, jamais un effet
+        de bord de la navigation.
+        """
         if self._fs_model.isDir(index):
-            self.source_changed.emit(self._fs_model.filePath(index))
+            self.source_changed.emit(self._fs_model.filePath(index), False)
 
     def _on_tree_menu(self, pos) -> None:
-        """Menu contextuel de l'arborescence : épingler un dossier."""
+        """Menu contextuel de l'arborescence : épingler ou charger récursivement."""
         index = self.tree_view.indexAt(pos)
         if not index.isValid() or not self._fs_model.isDir(index):
             return
         path = self._fs_model.filePath(index)
         menu = QMenu(self)
+        action_recursif = menu.addAction("Charger avec les sous-dossiers")
+        action_recursif.setToolTip(
+            "Parcourt toute l'arborescence : peut être long sur un disque entier"
+        )
+        menu.addSeparator()
         action = menu.addAction("Épingler comme cible de tri")
         if path in self._pinned:
             action.setEnabled(False)
@@ -230,6 +243,8 @@ class NavPanel(QWidget):
         chosen = menu.exec(self.tree_view.viewport().mapToGlobal(pos))
         if chosen is action:
             self.pin(path)
+        elif chosen is action_recursif:
+            self.source_changed.emit(path, True)
 
     def select_path(self, path: str) -> None:
         """Sélectionne et déplie *path* dans l'arborescence (depuis Parcourir)."""

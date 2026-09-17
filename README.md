@@ -66,6 +66,31 @@ harnais `core/` ne peut pas couvrir :
 .\.venv\Scripts\python.exe scripts/verifier_ui.py
 ```
 
+## Diagnostic (journal et mesures de performance)
+
+L'application **n'écrit rien** par défaut. Pour analyser une lenteur ou une
+erreur, on active le journal explicitement :
+
+```powershell
+.\.venv\Scripts\python.exe main.py --log        # journal d'activité
+.\.venv\Scripts\python.exe main.py --log-perf   # + mesures de performance détaillées
+.\.venv\Scripts\python.exe main.py --log-perf --log-console   # aussi à l'écran
+```
+
+Le journal est écrit dans `%LOCALAPPDATA%\PicturIt\picturit.log` (rotatif,
+3 fichiers de 2 Mo). Équivalent par variable d'environnement, utile pour l'exe
+installé : `$env:PICTURIT_LOG="perf"`.
+
+`--log-perf` produit, à la fin de chaque chargement de dossier, un bilan trié
+par temps cumulé — c'est ce qui permet de savoir **où** part le temps :
+
+```
+operation                               appels   total ms   moyenne    max ms
+image: decodage PIL                        600      19039     31.73     160.5
+metadonnees: EXIF (photo)                  600       6070     10.12      46.8
+affichage complet (600 media)                1        186    186.47     186.5
+```
+
 ## Qualité du code
 
 ```powershell

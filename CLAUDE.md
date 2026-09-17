@@ -35,8 +35,11 @@ ffprobe** (dans `./bin/`). **Zéro persistance disque** (tout en RAM ; seules
 
 ## Conventions
 - Commentaires et libellés UI **en français**.
-- **Zéro persistance** : ne jamais écrire sur disque hors tri/édition explicites
-  et export du log. Pas de QSettings ni cache disque.
+- **Zéro persistance** : ne jamais écrire sur disque hors tri/édition explicites,
+  export du log, et **journal de diagnostic** (`--log`/`--log-perf`, débrayé par
+  défaut → `%LOCALAPPDATA%\PicturIt\`). Pas de QSettings ni cache disque.
+- **Mesurer avant d'optimiser** : `core/perf.py` (`step`/`measure`/`report`)
+  instrumente les points chauds ; `main.py --log-perf` écrit le bilan.
 - Tolérance aux erreurs **sans planter** (fichier corrompu, EXIF absent, ffmpeg/
   codec manquant) → repli propre.
 - Suppression **toujours** via corbeille (`send2trash`), jamais `os.remove`.

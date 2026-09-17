@@ -118,3 +118,88 @@ class TestScan:
     def test_dossier_inexistant(self, tmp_path):
         """Un chemin absent ne doit pas lever : os.walk reste silencieux."""
         assert scanner.scan(str(tmp_path / "absent")) == []
+
+
+class TestScanNonRecursif:
+    """Mode navigation : contenu direct seulement (SPEC 4.1 révisée).
+
+    C'est ce mode qui rend le clic sur une racine de disque instantané : on ne
+    descend jamais dans l'arborescence.
+    """
+
+    @pytest.fixture
+    def arborescence(self, tmp_path):
+        (tmp_path / "vacances" / "jour2").mkdir(parents=True)
+        for rel in (
+            "a.jpg",
+            "b.mp4",
+            "notes.txt",
+            "vacances/photo.png",
+            "vacances/jour2/x.jpeg",
+        ):
+            (tmp_path / rel).write_bytes(b"contenu-de-test")
+        return tmp_path
+
+    def test_une_seule_section(self, arborescence):
+        sections = scanner.scan(str(arborescence), recursive=False)
+        assert [nom for nom, _ in sections] == [scanner.ROOT_SECTION_LABEL]
+
+    def test_seul_le_contenu_direct(self, arborescence):
+        sections = dict(scanner.scan(str(arborescence), recursive=False))
+        noms = [os.path.basename(m.path) for m in sections[scanner.ROOT_SECTION_LABEL]]
+        assert noms == ["a.jpg", "b.mp4"]
+
+    def test_sous_dossiers_absents(self, arborescence):
+        chemins = [
+            m.path
+            for _, files in scanner.scan(str(arborescence), recursive=False)
+            for m in files
+        ]
+        assert not any("vacances" in p for p in chemins)
+
+    def test_dossier_sans_media_direct(self, tmp_path):
+        """Un dossier dont les médias sont tous en profondeur paraît vide."""
+        (tmp_path / "sous").mkdir()
+        (tmp_path / "sous" / "photo.jpg").write_bytes(b"x")
+        assert scanner.scan(str(tmp_path), recursive=False) == []
+
+    def test_recursif_par_defaut(self, arborescence):
+        """L'appel sans argument reste récursif (compatibilité)."""
+        assert len(scanner.scan(str(arborescence))) == 3
+
+
+class TestAnnulation:
+    """Le parcours récursif doit pouvoir être interrompu."""
+
+    @pytest.fixture
+    def arborescence(self, tmp_path):
+        for i in range(5):
+            sous = tmp_path / f"dossier{i}"
+            sous.mkdir()
+            (sous / "photo.jpg").write_bytes(b"x")
+        (tmp_path / "racine.jpg").write_bytes(b"x")
+        return tmp_path
+
+    def test_annulation_immediate(self, arborescence):
+        """Annuler dès le premier dossier ne renvoie rien."""
+        assert scanner.scan(str(arborescence), should_cancel=lambda: True) == []
+
+    def test_sans_annulation(self, arborescence):
+        sections = scanner.scan(str(arborescence), should_cancel=lambda: False)
+        assert len(sections) == 6  # racine + 5 sous-dossiers
+
+    def test_annulation_en_cours_de_route(self, arborescence):
+        """Une annulation après quelques dossiers interrompt le parcours."""
+        visites = []
+
+        def annuler() -> bool:
+            visites.append(1)
+            return len(visites) > 3
+
+        assert scanner.scan(str(arborescence), should_cancel=annuler) == []
+        assert len(visites) == 4, "le parcours doit s'arrêter dès l'annulation"
+
+    def test_rappel_interroge_a_chaque_dossier(self, arborescence):
+        appels = []
+        scanner.scan(str(arborescence), should_cancel=lambda: bool(appels.append(1)))
+        assert len(appels) == 6

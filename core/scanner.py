@@ -1,13 +1,21 @@
-"""Scan récursif d'un dossier source et détection des formats média.
+"""Scan d'un dossier source et détection des formats média.
 
-Parcourt récursivement l'arborescence et renvoie les photos/vidéos regroupées
-par sous-dossier (section). Aucune lecture EXIF ici : ce module ne fait que
-lister les fichiers et reconnaître les formats par extension.
+Renvoie les photos/vidéos regroupées par sous-dossier (section). Aucune lecture
+EXIF ici : ce module ne fait que lister les fichiers et reconnaître les formats
+par extension.
+
+Deux modes (cf. ``scan``) :
+- **non récursif** : contenu direct du dossier. Instantané, y compris sur une
+  racine de disque — c'est le mode de la simple navigation ;
+- **récursif** : toute l'arborescence. Potentiellement très long (plusieurs
+  minutes sur un disque entier), donc réservé à une demande explicite et
+  toujours exécuté hors du thread d'interface, avec annulation.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 
 # Extensions reconnues (cf. SPEC 6.1). Toujours comparées en minuscules.
@@ -48,12 +56,25 @@ def section_key(name: str) -> tuple[int, str]:
     return (0, "") if name == ROOT_SECTION_LABEL else (1, name.lower())
 
 
-def scan(root: str) -> list[tuple[str, list[MediaFile]]]:
-    """Scanne récursivement *root* et renvoie les médias groupés par section.
+def scan(
+    root: str,
+    recursive: bool = True,
+    should_cancel: Callable[[], bool] | None = None,
+) -> list[tuple[str, list[MediaFile]]]:
+    """Scanne *root* et renvoie les médias groupés par section.
 
     Le résultat est une liste ordonnée de tuples ``(section, fichiers)`` :
     - les sections sont triées par chemin relatif (racine en premier) ;
     - les fichiers de chaque section sont triés par nom.
+
+    *recursive* : si False, seul le contenu **direct** de *root* est listé (une
+    seule section). C'est le mode utilisé pour la navigation, car il est
+    instantané même sur une racine de disque ; le parcours récursif, lui, peut
+    durer plusieurs minutes et n'est déclenché qu'à la demande explicite.
+
+    *should_cancel* : rappel interrogé à chaque dossier visité. S'il renvoie
+    True, le parcours s'arrête et une liste vide est renvoyée (l'appelant a
+    changé d'avis, son résultat ne l'intéresse plus).
 
     Les erreurs d'accès (dossier illisible, fichier disparu) sont ignorées
     silencieusement pour ne pas interrompre le scan.
@@ -61,8 +82,14 @@ def scan(root: str) -> list[tuple[str, list[MediaFile]]]:
     sections: dict[str, list[MediaFile]] = {}
 
     for dirpath, dirnames, filenames in os.walk(root):
+        if should_cancel is not None and should_cancel():
+            return []
+
         # Tri stable de la descente pour un ordre déterministe.
         dirnames.sort(key=str.lower)
+        if not recursive:
+            # Vider la liste in-place empêche os.walk de descendre plus bas.
+            dirnames.clear()
 
         rel = os.path.relpath(dirpath, root)
         section = ROOT_SECTION_LABEL if rel == "." else rel

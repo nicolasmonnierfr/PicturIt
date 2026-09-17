@@ -12,6 +12,13 @@ Aucune persistance disque (cf. SPEC 2).
 
 from __future__ import annotations
 
+import heapq
+import io
+import itertools
+import os
+from dataclasses import dataclass
+
+import piexif
 from PIL import Image, ImageOps
 from PySide6.QtCore import (
     QBuffer,
@@ -33,15 +40,10 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 
-from core import fftools, metadata
+from core import fftools, imaging, logs, metadata, perf
 
-# Enregistre le décodeur HEIC/HEIF comme opener Pillow (cf. SPEC 6.1).
-try:
-    from pillow_heif import register_heif_opener
-
-    register_heif_opener()
-except Exception:  # noqa: BLE001 — support HEIC optionnel, ne doit pas planter
-    pass
+# Configure Pillow (HEIC + images tronquées) : voir core/imaging.py.
+_ = imaging.HEIF_SUPPORTED
 
 # Taille (côté max) des vignettes générées.
 THUMB_SIZE = 160
@@ -59,7 +61,7 @@ def load_qimage(path: str, max_side: int | None = None) -> QImage | None:
     direct (octets RGBA bruts), sans aller-retour PNG coûteux.
     """
     try:
-        with Image.open(path) as img:
+        with perf.measure("image: decodage PIL"), Image.open(path) as img:
             # Décodage à échelle réduite si on ne produit qu'une vignette
             # (sans effet sur les formats qui ne gèrent pas draft, ex. PNG/HEIC).
             if max_side is not None:
@@ -81,8 +83,159 @@ def load_qimage(path: str, max_side: int | None = None) -> QImage | None:
                 QImage.Format.Format_RGBA8888,
             ).copy()
             return qimg if not qimg.isNull() else None
-    except Exception:  # noqa: BLE001 — fichier corrompu/illisible : pas de crash
+    except Exception as exc:  # noqa: BLE001 — fichier corrompu/illisible : pas de crash
+        # Le repli reste silencieux pour l'utilisateur, mais la cause est
+        # journalisée : sans cela, une photo « illisible » est indiagnosticable.
+        logs.get_logger("image").debug(
+            "lecture impossible de %s : %s: %s",
+            path, type(exc).__name__, exc,
+        )
         return None
+
+
+# Octets lus en tête de fichier pour récupérer l'EXIF et sa vignette. Mesuré à
+# 13 Ko maximum sur un jeu de photos iPhone réelles ; 64 Ko donne de la marge
+# sans jamais approcher le poids du fichier complet (plusieurs Mo).
+_EXIF_HEAD_BYTES = 64 * 1024
+
+# Priorités dans le pool de threads : une valeur plus haute passe devant.
+# Ce qui est sous les yeux de l'utilisateur prime ; les vidéos ferment la
+# marche car chacune coûte deux processus externes (ffprobe puis ffmpeg).
+PRIORITY_VISIBLE_PHOTO = 3
+PRIORITY_VISIBLE_VIDEO = 2
+PRIORITY_PHOTO = 1
+PRIORITY_VIDEO = 0
+
+
+def priority_for(is_video: bool, visible: bool) -> int:
+    """Priorité de traitement d'un média selon sa nature et sa visibilité."""
+    if visible:
+        return PRIORITY_VISIBLE_VIDEO if is_video else PRIORITY_VISIBLE_PHOTO
+    return PRIORITY_VIDEO if is_video else PRIORITY_PHOTO
+
+# Rotations correspondant au tag EXIF Orientation. La vignette embarquée ne
+# porte pas son propre EXIF : on lui applique l'orientation de l'image
+# principale, sans quoi les photos prises en portrait s'afficheraient couchées.
+_ORIENTATION_TRANSPOSE = {
+    3: Image.Transpose.ROTATE_180,
+    6: Image.Transpose.ROTATE_270,
+    8: Image.Transpose.ROTATE_90,
+}
+
+
+class _HeaderStrategy:
+    """Décide s'il vaut la peine de lire l'en-tête avant le fichier complet.
+
+    Lire les 64 premiers Ko est **un pari** : gagnant si le fichier contient une
+    vignette EXIF (on évite de transférer plusieurs Mo), perdant sinon (on aura
+    payé une lecture pour rien avant de tout relire).
+
+    Mesuré sur un partage réseau : gain de ~480 ms quand la vignette est là,
+    surcoût de ~340 ms quand elle manque. Le pari est donc rentable au-delà
+    d'environ 40 % de réussite. Or cela dépend entièrement du dossier : 100 %
+    sur des photos d'iPhone, 11 % sur des photos re-compressées.
+
+    D'où cet apprentissage par dossier : on essaie sur les premiers fichiers,
+    puis on s'en tient au constat. Remis à zéro à chaque changement de dossier.
+
+    Les compteurs sont lus et écrits depuis plusieurs workers sans verrou :
+    une statistique approximative suffit ici, et un verrou sur un chemin aussi
+    chaud coûterait plus cher que l'imprécision qu'il éviterait.
+    """
+
+    _ECHANTILLON = 24      # essais avant de trancher
+    _SEUIL_RENTABLE = 0.40  # taux de vignettes au-delà duquel le pari paie
+
+    def __init__(self) -> None:
+        self._hits = 0
+        self._total = 0
+
+    def reset(self) -> None:
+        self._hits = 0
+        self._total = 0
+
+    def should_try(self) -> bool:
+        if self._total < self._ECHANTILLON:
+            return True  # phase d'observation
+        return (self._hits / self._total) >= self._SEUIL_RENTABLE
+
+    def record(self, found: bool) -> None:
+        self._total += 1
+        if found:
+            self._hits += 1
+        if self._total == self._ECHANTILLON:
+            taux = self._hits / self._total
+            logs.get_logger("image").debug(
+                "vignettes EXIF : %d/%d (%.0f %%) → lecture d'en-tête %s",
+                self._hits, self._total, taux * 100,
+                "conservée" if taux >= self._SEUIL_RENTABLE else "abandonnée",
+            )
+
+
+HEADER_STRATEGY = _HeaderStrategy()
+
+
+def read_header(path: str) -> bytes | None:
+    """Lit les premiers octets du fichier (EXIF + vignette embarquee).
+
+    Une seule lecture reseau sert ensuite a tout : vignette, dimensions,
+    date et GPS.
+    """
+    try:
+        with perf.measure("image: lecture en-tete"), open(path, "rb") as fh:
+            return fh.read(_EXIF_HEAD_BYTES)
+    except OSError:
+        return None
+
+
+def thumbnail_from_header(header: bytes, max_side: int) -> QImage | None:
+    """Vignette **embarquée dans l'EXIF**, extraite d'un en-tête déjà lu.
+
+    La plupart des photos d'appareil et de téléphone contiennent une vignette
+    JPEG de 160×120 dans leur EXIF. La lire coûte quelques kilo-octets au lieu
+    de plusieurs méga-octets : décisif quand les photos sont sur un partage
+    réseau, où l'application transférait jusqu'ici le fichier entier pour
+    produire une image de 160 pixels.
+
+    Renvoie None si le fichier n'a pas de vignette, ou si elle est trop petite
+    pour la taille demandée — l'appelant retombe alors sur la lecture complète.
+    """
+    try:
+        with perf.measure("image: vignette EXIF"):
+            exif = piexif.load(header)
+            raw = exif.get("thumbnail")
+            if not raw:
+                return None
+
+            with Image.open(io.BytesIO(raw)) as img:
+                img.load()
+                # Trop petite : l'agrandir donnerait une vignette floue.
+                if max(img.size) < max_side:
+                    return None
+                orientation = exif.get("0th", {}).get(piexif.ImageIFD.Orientation, 1)
+                transpose = _ORIENTATION_TRANSPOSE.get(orientation)
+                if transpose is not None:
+                    img = img.transpose(transpose)
+                img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+                img = img.convert("RGBA")
+                width, height = img.size
+                qimg = QImage(
+                    img.tobytes("raw", "RGBA"),
+                    width,
+                    height,
+                    QImage.Format.Format_RGBA8888,
+                ).copy()
+                return qimg if not qimg.isNull() else None
+    except Exception:  # noqa: BLE001 — pas de vignette exploitable : repli normal
+        return None
+
+
+def _has_content(path: str) -> bool:
+    """True si le fichier existe et n'est pas vide (0 octet)."""
+    try:
+        return os.path.getsize(path) > 0
+    except OSError:
+        return False
 
 
 def extract_video_frame(path: str, max_side: int | None = None) -> QImage | None:
@@ -109,6 +262,15 @@ def extract_video_frame(path: str, max_side: int | None = None) -> QImage | None
     return qimg
 
 
+@dataclass
+class _Queued:
+    """Vignette demandée mais pas encore lancée (file interne)."""
+
+    is_video: bool
+    size: int
+    priority: int
+
+
 class _ThumbnailSignals(QObject):
     """Signaux émis par un worker (un QRunnable ne peut pas émettre seul)."""
 
@@ -129,15 +291,42 @@ class _ThumbnailWorker(QRunnable):
         self.signals = _ThumbnailSignals()
 
     def run(self) -> None:
+        meta = None
         if self._is_video:
             qimg = extract_video_frame(self._path, self._size)
         else:
-            qimg = load_qimage(self._path, self._size)
+            # Une seule lecture réseau sert à tout : la vignette EXIF ET les
+            # métadonnées (dimensions, date, GPS). Auparavant chaque photo était
+            # ouverte jusqu'à trois fois, ce qui dominait le temps de chargement
+            # sur un partage réseau.
+            qimg = None
+            header = read_header(self._path) if HEADER_STRATEGY.should_try() else None
+            if header:
+                qimg = thumbnail_from_header(header, self._size)
+                HEADER_STRATEGY.record(qimg is not None)
+                meta = metadata.read_from_header(self._path, header)
+            if qimg is None:
+                qimg = load_qimage(self._path, self._size)
+            if qimg is None and _has_content(self._path):
+                # Des fichiers portent une extension photo tout en contenant
+                # une vidéo (Live Photos iPhone, conteneurs QuickTime renommés
+                # en .JPG). Pillow échoue légitimement ; ffmpeg, lui, sait en
+                # extraire une image. Mieux vaut une vignette qu'une tuile
+                # « illisible ». Non tenté sur un fichier vide : ffmpeg
+                # échouerait de toute façon, et lancer un processus par fichier
+                # vide coûte cher sur un dossier réseau.
+                qimg = extract_video_frame(self._path, self._size)
+                if qimg is not None:
+                    logs.get_logger("image").debug(
+                        "%s : illisible par Pillow, vignette obtenue via ffmpeg "
+                        "(extension trompeuse ?)", self._path,
+                    )
 
         # Métadonnées GPS (badge + marqueur carte), tolérantes aux erreurs.
         lat, lon, has_gps = 0.0, 0.0, False
         try:
-            meta = metadata.read(self._path)
+            if meta is None:  # en-tête absent ou insuffisant : lecture complète
+                meta = metadata.read(self._path)
             has_gps = meta.has_gps
             if has_gps:
                 lat, lon = meta.latitude, meta.longitude
@@ -166,7 +355,23 @@ class ThumbnailManager(QObject):
         self._cache: dict[str, QPixmap] = {}             # vignette brute (sans overlay)
         self._gps: dict[str, bool] = {}                  # présence GPS connue
         self._coords: dict[str, tuple[float, float]] = {}  # (lat, lon) si GPS
-        self._pending: set[str] = set()
+        self._pending: set[str] = set()      # tâches confiées au pool
+        self._waiting: dict[str, _Queued] = {}  # demandées, pas encore lancées
+        self._heap: list[tuple[int, int, str]] = []
+        self._counter = itertools.count()
+        # Exactement de quoi occuper le pool, pas davantage : toute tâche
+        # confiée à Qt échappe à la repriorisation, donc une file d'avance
+        # retarderait d'autant l'effet d'un défilement. Avec ce réglage, un
+        # créneau se libère dès qu'une vignette est produite.
+        self._max_inflight = max(4, self._pool.maxThreadCount())
+        # Vignettes encodées en base64 pour les popups de la carte :
+        # (chemin, taille) -> data URL. Coûteux à produire, redemandé à
+        # chaque reconstruction du lot de points.
+        self._data_urls: dict[tuple[str, int], str] = {}
+
+    def capacity(self) -> int:
+        """Nombre de tâches que le pool peut traiter de front."""
+        return max(1, self._pool.maxThreadCount())
 
     def clear(self) -> None:
         """Vide le cache et les tâches en attente (nouveau dossier source)."""
@@ -174,24 +379,41 @@ class ThumbnailManager(QObject):
         self._gps.clear()
         self._coords.clear()
         self._pending.clear()
+        self._waiting.clear()
+        self._heap.clear()
+        self._data_urls.clear()
+        HEADER_STRATEGY.reset()
         metadata.clear_cache()
 
     def thumb_data_url(self, path: str, size: int = 72) -> str:
-        """Renvoie la vignette en cache encodée en data URL base64 (pour la carte)."""
+        """Vignette en cache encodée en data URL base64 (popup de la carte).
+
+        **Mémoïsé** : la galerie reconstruit tout le lot de points à chaque
+        nouvelle photo géolocalisée. Sans ce cache, charger 350 médias
+        provoquait 1 948 ré-encodages PNG + base64 **sur le thread UI**, soit
+        près de 4 s de micro-gels répartis en saccades de 150 à 270 ms.
+        """
+        cle = (path, size)
+        memo = self._data_urls.get(cle)
+        if memo is not None:
+            return memo
         pixmap = self._cache.get(path)
         if pixmap is None or pixmap.isNull():
             return ""
-        small = pixmap.scaled(
-            size, size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        data = QByteArray()
-        buffer = QBuffer(data)
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        small.save(buffer, "PNG")
-        buffer.close()
-        return "data:image/png;base64," + bytes(data.toBase64()).decode("ascii")
+        with perf.measure("carte: vignette base64"):
+            small = pixmap.scaled(
+                size, size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            data = QByteArray()
+            buffer = QBuffer(data)
+            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+            small.save(buffer, "PNG")
+            buffer.close()
+            url = "data:image/png;base64," + bytes(data.toBase64()).decode("ascii")
+            self._data_urls[cle] = url
+            return url
 
     def invalidate(self, path: str) -> None:
         """Oublie la vignette en cache d'un fichier (son contenu a changé)."""
@@ -199,7 +421,14 @@ class ThumbnailManager(QObject):
         self._gps.pop(path, None)
         self._coords.pop(path, None)
         self._pending.discard(path)
+        self._waiting.pop(path, None)
+        self._drop_data_urls(path)
         metadata.invalidate(path)
+
+    def _drop_data_urls(self, path: str) -> None:
+        """Oublie les data URL d'un chemin (toutes tailles confondues)."""
+        for cle in [k for k in self._data_urls if k[0] == path]:
+            del self._data_urls[cle]
 
     def rekey(self, old_path: str, new_path: str) -> None:
         """Réaffecte les données en cache à un nouveau chemin (fichier déplacé)."""
@@ -220,7 +449,10 @@ class ThumbnailManager(QObject):
         if old_path in self._coords:
             self._coords[new_path] = self._coords[old_path]
 
-    def request(self, path: str, is_video: bool, size: int = THUMB_SIZE) -> None:
+    def request(
+        self, path: str, is_video: bool, size: int = THUMB_SIZE,
+        priority: int | None = None,
+    ) -> None:
         """Demande la vignette d'un média.
 
         Si elle est déjà en cache, ré-émet immédiatement ``thumbnail_ready``
@@ -232,13 +464,64 @@ class ThumbnailManager(QObject):
                 lat, lon = self._coords[path]
                 self.geo_point.emit(path, lat, lon)
             return
-        if path in self._pending:
+        if path in self._pending or path in self._waiting:
             return
-        self._pending.add(path)
-        worker = _ThumbnailWorker(path, is_video, size)
-        worker.signals.finished.connect(self._on_finished)
-        worker.signals.failed.connect(self._on_failed)
-        self._pool.start(worker)
+        if priority is None:
+            priority = priority_for(is_video, visible=False)
+        self._waiting[path] = _Queued(is_video, size, priority)
+        self._enqueue(path, priority)
+        self._pump()
+
+    def prioritize(self, paths, priority: int) -> None:
+        """Fait passer devant des vignettes **pas encore lancées**.
+
+        Appelé quand l'utilisateur fait défiler la galerie : ce qu'il a sous les
+        yeux doit être servi en premier, sans rien abandonner du reste (la carte
+        et les statistiques ont besoin de **tous** les médias).
+
+        Les tâches déjà en cours ne sont pas interrompues : ce serait gâcher une
+        lecture disque presque terminée.
+        """
+        remontes = 0
+        for path in paths:
+            item = self._waiting.get(path)
+            if item is not None and priority > item.priority:
+                item.priority = priority
+                self._enqueue(path, priority)  # l'ancienne entrée sera ignorée
+                remontes += 1
+        if remontes:
+            perf.note(
+                "priorite: %d/%d vignette(s) visibles remontees "
+                "(file=%d, en cours=%d)",
+                remontes, len(paths), len(self._waiting), len(self._pending),
+            )
+            self._pump()
+
+    def _enqueue(self, path: str, priority: int) -> None:
+        """Insère une entrée dans le tas (priorité décroissante, puis ordre d'arrivée)."""
+        heapq.heappush(self._heap, (-priority, next(self._counter), path))
+
+    def _pump(self) -> None:
+        """Lance des tâches tant que le pool a de la place, les plus urgentes d'abord.
+
+        On ne déverse **pas** toute la file dans QThreadPool : une fois une tâche
+        confiée à Qt, sa priorité est figée et le défilement ne pourrait plus la
+        faire passer devant. En gardant la file ici, chaque créneau libéré est
+        attribué au média le plus utile à cet instant.
+        """
+        while self._heap and len(self._pending) < self._max_inflight:
+            neg_priority, _, path = heapq.heappop(self._heap)
+            item = self._waiting.get(path)
+            if item is None:
+                continue  # déjà lancée par une entrée plus prioritaire
+            if -neg_priority != item.priority:
+                continue  # entrée périmée : le média a été repriorisé depuis
+            del self._waiting[path]
+            self._pending.add(path)
+            worker = _ThumbnailWorker(path, item.is_video, item.size)
+            worker.signals.finished.connect(self._on_finished)
+            worker.signals.failed.connect(self._on_failed)
+            self._pool.start(worker)
 
     def _on_finished(
         self, path: str, qimg: QImage, has_gps: bool, lat: float, lon: float
@@ -247,6 +530,7 @@ class ThumbnailManager(QObject):
         self._cache[path] = pixmap
         self._gps[path] = has_gps
         self._pending.discard(path)
+        self._pump()
         self.thumbnail_ready.emit(path, pixmap, has_gps)
         if has_gps:
             self._coords[path] = (lat, lon)
@@ -255,6 +539,7 @@ class ThumbnailManager(QObject):
     def _on_failed(self, path: str, has_gps: bool, lat: float, lon: float) -> None:
         self._gps[path] = has_gps
         self._pending.discard(path)
+        self._pump()
         self.thumbnail_failed.emit(path, has_gps)
         if has_gps:
             self._coords[path] = (lat, lon)

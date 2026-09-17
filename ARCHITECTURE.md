@@ -35,6 +35,8 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 | `duplicates.py` | Doublons/similaires | `analyze()` → `DupIndex` ; union-find ; seuils `SIMILAR_TIME_SECONDS=2`, `SIMILAR_GPS_METERS=50` |
 | `operations.py` | move/copy/trash + undo + log | `OperationManager` ; renvoie `[FileChange(kind, src, dst)]` ; `rename`, `log_edit`, `export_log` |
 | `editing.py` | Rotation/recadrage/conversion | rotation JPEG **lossless** (tag EXIF Orientation) ; crop/convert via Pillow ; **écrit sur disque** |
+| `logs.py` | Journal de diagnostic | **débrayé par défaut** (`--log`/`--log-perf`/`PICTURIT_LOG`) → `%LOCALAPPDATA%\PicturIt\picturit.log` rotatif ; seule écriture disque hors tri/édition |
+| `perf.py` | Mesures de performance | `step` (ponctuel, tracé) / `measure` (répété, **agrégé**) / `report` ; actif seulement en niveau DEBUG |
 
 ## 3. Modules `ui/`
 
@@ -53,13 +55,26 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 ## 4. Flux de données (à connaître pour déboguer)
 
 ### Chargement
-`nav_panel` (clic/Entrée dossier) → `source_changed` → `MainWindow._set_source`
-→ `gallery.load_media(dir)` → `scanner.scan` → `_media_by_path` (**source de
+`nav_panel` (clic/Entrée dossier) → `source_changed(dir, recursive)` →
+`MainWindow._set_source` → `gallery.load_media(dir, recursive)` →
+**`_ScanWorker` (QThreadPool)** → `scanner.scan` → `_on_scan_finished`
+→ `_media_by_path` (**source de
 vérité**) → `_compute_view()` (filtre carte + filtre + recherche + tri avec
 ordre asc/desc) → `_display(list)` → `_section_of(media)` donne (libellé, clé)
 de section selon le **regroupement** (`dir` = sous-dossier par défaut, ou
 `day`/`week`/`month` = date de prise de vue) → une section (`_SectionListView`)
 par groupe + `_append_item` → `ThumbnailManager.request`.
+
+**Récursivité = geste explicite.** Le clic dans l'arbre charge le contenu
+**direct** du dossier (`recursive=False`), ce qui est instantané même sur `C:\`.
+Le parcours complet passe par le bouton « Inclure les sous-dossiers » ou le menu
+contextuel de l'arborescence.
+
+**Jeton de scan (`_scan_token`).** Il sert à deux choses à la fois : le worker
+compare son jeton au jeton courant pour savoir s'il doit s'arrêter
+(`should_cancel`), et `_on_scan_finished` ignore tout résultat dont le jeton est
+périmé. Changer de dossier ou cliquer « Arrêter l'analyse » incrémente le jeton,
+donc annule le scan en cours **sans** attendre qu'il se termine.
 
 ### Vignettes (asynchrone)
 `request` → worker QThreadPool → `thumbnail_ready(path, pixmap, has_gps)` /
@@ -101,9 +116,14 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
 ---
 
 ## 5. Threads
-- `QThreadPool.globalInstance()` : workers de vignettes (`_ThumbnailWorker`) et
-  analyse des doublons (`_DuplicatesWorker`). Résultats remontés par **signaux**
-  (donc exécutés sur le thread UI).
+- `QThreadPool.globalInstance()` : scan du dossier source (`_ScanWorker`),
+  workers de vignettes (`_ThumbnailWorker`) et analyse des doublons
+  (`_DuplicatesWorker`). Résultats remontés par **signaux** (donc exécutés sur
+  le thread UI).
+- ⚠️ **Rien de bloquant sur le thread UI** (SPEC 5.3). Le scan y était
+  synchrone jusqu'à la v1.1.1 : un clic sur une racine de disque figeait
+  l'application plusieurs minutes. Toute nouvelle opération qui parcourt le
+  disque doit passer par un worker.
 - `closeEvent` fait `QThreadPool.clear()` + `waitForDone(2000)` pour éviter les
   erreurs « Signal source has been deleted » à l'arrêt.
 
@@ -126,6 +146,11 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
    (conforme SPEC, mais surprenant sur des jeux de test artificiels).
 5. **Vignette = clé par chemin** : après move/copy → `rekey`/`duplicate` ; après
    édition → `invalidate` ; changement de taille → `clear` + ré-affichage.
+6bis. **Mode non récursif et `_is_within_source`** : en mode « dossier seul », un
+    fichier copié/déplacé vers un **sous-dossier** ne doit pas réapparaître dans
+    la galerie. `_is_within_source` teste donc le dossier parent exact, et non
+    l'appartenance à l'arborescence. Si un fichier trié surgit là où il ne
+    devrait pas, regarder cette méthode.
 6. **`_media_by_path`** est la source de vérité ; il est maintenu dans
    `_add_path`/`_remove_item`. Le tri/filtre/recherche recalcule la vue via
    `_compute_view()` ; en mode doublons la base est l'ensemble groupé, **filtré

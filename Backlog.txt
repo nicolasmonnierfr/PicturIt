@@ -24,6 +24,15 @@ UX / Accessibilité — P3 (confort) :
 -------------------------------------------------------------------------------
 (Tous corrigés lors de la séance de bugfix — voir « LIVRÉ ▸ Correctifs ».)
 
+- [x] **Gel de l'application au clic sur un disque** : le scan récursif était
+      exécuté sur le thread UI (`scanner.scan` appelé directement dans
+      `load_media`), en violation de SPEC 5.3. Cliquer sur `C:\` lançait un
+      `os.walk` de tout le disque — mesuré à 10 765 dossiers / 72 337 fichiers
+      en 10 s, sans être terminé — et figeait l'app plusieurs minutes, sans
+      possibilité d'annuler. Corrigé par : scan en arrière-plan (`_ScanWorker`),
+      annulation par jeton, et surtout **clic = contenu direct seulement**
+      (récursif sur geste explicite). Clic sur `C:\` : 58 ms.
+
 - [x] Vignettes noires (photo comme vidéo) + GPS marqué absent : symptômes de
       lenteur sur un PC sous-dimensionné → traités par l'optimisation des perfs
       (décodage draft + conversion directe + cache métadonnées).

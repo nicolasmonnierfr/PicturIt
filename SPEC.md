@@ -25,9 +25,13 @@ Construire une application de bureau **Windows** permettant de **trier des photo
 | Framework UI | **PySide6 (Qt 6)** | Vraie application de bureau native |
 | Carte | **Leaflet** (JS) dans **QtWebEngine** | Carte interactive riche ; tuiles OpenStreetMap **en ligne** |
 | Packaging | **PyInstaller** | `.exe` autonome |
-| Persistance | **AUCUNE** | Pas de fichier de config, pas de cache disque, pas de base de données. L'app ne doit rien écrire en dehors des opérations de tri explicites et d'un éventuel log exporté à la demande. |
+| Persistance | **AUCUNE** (sauf journal de diagnostic, débrayé par défaut) | Pas de fichier de config, pas de cache disque, pas de base de données. L'app ne doit rien écrire en dehors des opérations de tri explicites, d'un éventuel log exporté à la demande, et du journal de diagnostic s'il est activé. |
 
-⚠️ **Zéro persistance** est une exigence ferme. Pas de `QSettings`, pas de fichier `.ini`, pas de cache de vignettes sur disque. Tout est recalculé en mémoire à chaque lancement. Seule exception : l'export manuel du log (section 8).
+⚠️ **Zéro persistance** reste la règle. Pas de `QSettings`, pas de fichier `.ini`, pas de cache de vignettes sur disque. Tout est recalculé en mémoire à chaque lancement.
+
+Exceptions, toutes déclenchées par une action explicite de l'utilisateur :
+1. l'export manuel du journal des opérations (section 8) ;
+2. **le journal de diagnostic** (révision v1.1.1) : `--log` / `--log-perf` écrit dans `%LOCALAPPDATA%\PicturIt\picturit.log` (rotatif, 3 × 2 Mo). **Désactivé par défaut : sans l'option, aucun fichier n'est créé.** Assoupli pour permettre d'analyser une lenteur ou une erreur sur la machine de l'utilisateur, ce qui était impossible à l'aveugle.
 
 ### Dépendances Python autorisées
 - `PySide6` (UI + QtWebEngine + QtMultimedia)
@@ -76,7 +80,9 @@ Fenêtre principale divisée en **3 colonnes** + barre supérieure + barre infé
 
 **Haut : arborescence de fichiers** (type explorateur Windows)
 - Widget `QTreeView` + `QFileSystemModel`.
-- **Clic gauche** sur un dossier → le charge comme **dossier source** : la galerie affiche **récursivement** toutes les photos/vidéos de ce dossier et de tous ses sous-dossiers.
+- **Clic gauche** sur un dossier → le charge comme **dossier source** : la galerie affiche les photos/vidéos situées **directement** dans ce dossier, sans descendre dans les sous-dossiers.
+- **Parcours récursif = geste explicite** : bouton « Inclure les sous-dossiers » de la barre supérieure, ou « Charger avec les sous-dossiers » du menu contextuel de l'arborescence. L'analyse se fait en arrière-plan et reste **interruptible**.
+  > Révision v1.1.1. La version initiale chargeait récursivement dès le clic : cliquer sur une racine de disque figeait l'application plusieurs minutes (`os.walk` de tout le disque sur le thread UI). Naviguer dans l'arborescence doit rester instantané ; explorer une arborescence entière est une action délibérée.
 - **Clic droit** sur un dossier → menu contextuel avec **« Épingler »** → l'ajoute à l'accès rapide.
 
 **Bas : accès rapide** (dossiers cibles épinglés)

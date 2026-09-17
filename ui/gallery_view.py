@@ -18,6 +18,7 @@ from __future__ import annotations
 import bisect
 import math
 import os
+import time
 from datetime import timedelta
 
 from PySide6.QtCore import (
@@ -53,8 +54,10 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from core import duplicates, metadata, scanner
+from core import duplicates, metadata, perf, scanner
 from core.thumbnails import (
+    PRIORITY_VISIBLE_PHOTO,
+    PRIORITY_VISIBLE_VIDEO,
     THUMB_SIZE,
     ThumbnailManager,
     make_placeholder_pixmap,
@@ -116,6 +119,8 @@ class _SectionListView(QListView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        # Zone défilante parente, résolue à la première molette.
+        self._cached_scroll_area: QScrollArea | None = None
         # Le glisser sert à exporter des fichiers vers une cible, pas à réordonner.
         self.setDragEnabled(True)
         self.setDragDropMode(QListView.DragDropMode.DragOnly)
@@ -146,6 +151,34 @@ class _SectionListView(QListView):
     def resizeEvent(self, event) -> None:  # noqa: N802 (API Qt)
         super().resizeEvent(event)
         self.refresh_height()
+
+    def wheelEvent(self, event) -> None:  # noqa: N802 (API Qt)
+        """Laisse la molette à la zone défilante parente.
+
+        Chaque section a sa hauteur fixée à la totalité de son contenu et n'a
+        donc **rien** à faire défiler ; mais en tant que ``QAbstractScrollArea``
+        elle absorbait quand même l'événement. Résultat : la molette ne faisait
+        rien tant que le curseur était au-dessus d'une vignette — c'est-à-dire
+        presque partout — et le signal de défilement n'étant jamais émis, les
+        vignettes visibles n'étaient jamais repriorisées.
+
+        ``event.ignore()`` ne suffit pas : Qt ne fait pas remonter la molette
+        d'un ``QAbstractScrollArea`` vers son parent. Il faut la lui transmettre.
+        """
+        zone = self._scroll_area()
+        if zone is None:
+            super().wheelEvent(event)
+            return
+        QApplication.sendEvent(zone.viewport(), event)
+
+    def _scroll_area(self) -> QScrollArea | None:
+        """Zone défilante qui contient cette section (mémoïsée)."""
+        if self._cached_scroll_area is None:
+            parent = self.parent()
+            while parent is not None and not isinstance(parent, QScrollArea):
+                parent = parent.parent()
+            self._cached_scroll_area = parent
+        return self._cached_scroll_area
 
     def startDrag(self, supported_actions) -> None:  # noqa: N802 (API Qt)
         """Démarre un glisser transportant les chemins des items sélectionnés."""
@@ -179,6 +212,43 @@ class _Section:
         self.header = header
         self.view = view
         self.model = model
+
+
+class _ScanSignals(QObject):
+    finished = Signal(object, int)  # (sections, jeton du scan)
+
+
+class _ScanWorker(QRunnable):
+    """Parcours du dossier source hors thread UI (cf. SPEC 5.3).
+
+    Un scan récursif peut durer plusieurs minutes sur une racine de disque :
+    le faire sur le thread d'interface figeait l'application. Le *jeton* permet
+    à la galerie d'ignorer un résultat devenu obsolète, et le rappel
+    ``is_cancelled`` (qui compare ce jeton au jeton courant) permet au parcours
+    de s'arrêter au plus tôt.
+    """
+
+    def __init__(self, root: str, recursive: bool, token: int, is_cancelled) -> None:
+        super().__init__()
+        self._root = root
+        self._recursive = recursive
+        self._token = token
+        self._is_cancelled = is_cancelled
+        self.signals = _ScanSignals()
+
+    def run(self) -> None:
+        try:
+            with perf.step(
+                f"scan {'recursif' if self._recursive else 'direct'}"
+            ):
+                sections = scanner.scan(
+                    self._root,
+                    recursive=self._recursive,
+                    should_cancel=self._is_cancelled,
+                )
+        except Exception:  # noqa: BLE001 — dossier illisible : galerie vide, pas de crash
+            sections = []
+        self.signals.finished.emit(sections, self._token)
 
 
 class _DuplicatesSignals(QObject):
@@ -247,6 +317,10 @@ class GalleryView(QWidget):
         self._size_timer = QTimer(self)
         self._size_timer.setSingleShot(True)
         self._size_timer.timeout.connect(self._apply_thumb_size)
+        # Anti-rebond de la repriorisation des vignettes visibles (défilement).
+        self._priority_timer = QTimer(self)
+        self._priority_timer.setSingleShot(True)
+        self._priority_timer.timeout.connect(self._prioritize_visible)
 
         # Vignettes d'attente (régénérées si la taille change).
         self._rebuild_pending_icons()
@@ -263,10 +337,16 @@ class GalleryView(QWidget):
         self._total = 0
         self._done = 0
         self._loading = False
+        self._load_started = 0.0  # horodatage du début de chargement (mesures)
 
         # Médias du dossier source (source de vérité pour le filtrage doublons).
         # L'ordre d'insertion = ordre du scan (préservé par le dict).
         self._media_by_path: dict[str, scanner.MediaFile] = {}
+        # Scan en arrière-plan : mode courant, jeton d'obsolescence, état.
+        # Par défaut on n'explore PAS les sous-dossiers (navigation instantanée).
+        self._recursive = False
+        self._scan_token = 0
+        self._scanning = False
         # Tri / filtre / recherche de la galerie.
         self._sort_key = "name"     # name | date | size
         self._sort_desc = False     # ordre décroissant si True
@@ -394,6 +474,23 @@ class GalleryView(QWidget):
         self._filter_banner.setVisible(False)
         layout.addWidget(self._filter_banner)
 
+        # --- Bannière d'analyse (scan récursif en cours, annulable) ---
+        self._scan_banner = QFrame()
+        self._scan_banner.setStyleSheet("background:#4a412d; border-radius:3px;")
+        scan_layout = QHBoxLayout(self._scan_banner)
+        scan_layout.setContentsMargins(8, 3, 6, 3)
+        self._scan_banner_label = QLabel()
+        scan_layout.addWidget(self._scan_banner_label)
+        scan_layout.addStretch(1)
+        self._cancel_scan_button = QPushButton("✕ Arrêter l'analyse")
+        self._cancel_scan_button.setToolTip(
+            "Interrompre le parcours des sous-dossiers"
+        )
+        self._cancel_scan_button.clicked.connect(self.cancel_scan)
+        scan_layout.addWidget(self._cancel_scan_button)
+        self._scan_banner.setVisible(False)
+        layout.addWidget(self._scan_banner)
+
         # --- Zone défilante contenant les sections ---
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -402,6 +499,10 @@ class GalleryView(QWidget):
         self._sections_layout.setContentsMargins(0, 0, 0, 0)
         self._sections_layout.setSpacing(8)
         self._scroll.setWidget(self._container)
+        # Ce qui entre dans le champ de vision doit être servi en priorité.
+        self._scroll.verticalScrollBar().valueChanged.connect(
+            self._schedule_prioritize
+        )
         layout.addWidget(self._scroll)
 
         # Message affiché tant qu'aucun dossier source n'est chargé.
@@ -414,8 +515,17 @@ class GalleryView(QWidget):
         self._sections_layout.addStretch(1)
 
     # --- Chargement d'un dossier source ---
-    def load_media(self, source_dir: str) -> None:
-        """Scanne *source_dir* et reconstruit la galerie (récursif)."""
+    def load_media(self, source_dir: str, recursive: bool = False) -> None:
+        """Charge *source_dir* dans la galerie, **sans jamais figer l'UI**.
+
+        Par défaut le scan n'est **pas** récursif : seul le contenu direct du
+        dossier est affiché. Ce mode est instantané même sur une racine de
+        disque, ce qui permet de parcourir l'arborescence librement.
+
+        Le parcours récursif (*recursive*) est réservé à une demande explicite
+        de l'utilisateur ; il peut durer plusieurs minutes, il est donc exécuté
+        dans un thread et reste annulable (cf. SPEC 5.3).
+        """
         # Réinitialisation complète (cache vignettes + points GPS + doublons).
         self._thumbnails.clear()
         self._geo.clear()
@@ -427,23 +537,97 @@ class GalleryView(QWidget):
             switch.setChecked(False)
             switch.blockSignals(False)
         self._source_root = source_dir
+        self._recursive = recursive
+        self._media_by_path = {}
+        self._date_cache.clear()
+        self._reset_filters()
+        self._start_scan(source_dir, recursive)
 
-        sections = scanner.scan(source_dir)
+    # --- Scan en arrière-plan (SPEC 5.3 : ne jamais figer l'UI) ---
+    def _start_scan(self, source_dir: str, recursive: bool) -> None:
+        """Lance le scan hors thread UI, en invalidant le scan précédent."""
+        # Le jeton sert à deux choses : ignorer le résultat d'un scan devenu
+        # obsolète, et signaler au worker qu'il doit s'arrêter (son jeton
+        # n'est plus le jeton courant).
+        perf.reset()
+        perf.note("chargement de %s (recursif=%s)", source_dir, recursive)
+        self._scan_token += 1
+        token = self._scan_token
+        self._scanning = True
+
+        self._clear_view()
+        self._placeholder.setText(
+            "Analyse du dossier et de ses sous-dossiers…"
+            if recursive
+            else "Lecture du dossier…"
+        )
+        self._placeholder.show()
+        self._scan_banner.setVisible(recursive)  # annulation utile si long
+        if recursive:
+            self._scan_banner_label.setText(
+                f"Analyse récursive de {os.path.basename(source_dir) or source_dir}…"
+            )
+
+        worker = _ScanWorker(
+            source_dir,
+            recursive,
+            token,
+            lambda t=token: self._scan_token != t,
+        )
+        worker.signals.finished.connect(self._on_scan_finished)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_scan_finished(self, sections, token: int) -> None:
+        """Réception du résultat de scan (sur le thread UI)."""
+        if token != self._scan_token:
+            return  # scan obsolète : l'utilisateur a changé de dossier entre-temps
+        self._scanning = False
+        self._scan_banner.setVisible(False)
+
         self._media_by_path = {
             media.path: media for _, files in sections for media in files
         }
 
-        self._date_cache.clear()
-        self._reset_filters()
-
         if not self._media_by_path:
             self._clear_view()
-            self._placeholder.setText("Aucune photo ou vidéo trouvée dans ce dossier.")
+            self._placeholder.setText(self._empty_label())
             self._placeholder.show()
             self.loading_finished.emit()
             return
 
         self._refresh_view()
+
+    def _empty_label(self) -> str:
+        """Message d'un dossier sans média, explicite selon le mode de scan."""
+        if self._recursive:
+            return "Aucune photo ou vidéo dans ce dossier ni ses sous-dossiers."
+        return (
+            "Aucune photo ou vidéo directement dans ce dossier.\n"
+            "Utilisez « Inclure les sous-dossiers » pour explorer l'arborescence."
+        )
+
+    def cancel_scan(self) -> None:
+        """Interrompt le scan en cours (bouton « Arrêter »)."""
+        if not self._scanning:
+            return
+        self._scan_token += 1  # le worker verra son jeton périmé et s'arrêtera
+        self._scanning = False
+        self._scan_banner.setVisible(False)
+        self._clear_view()
+        self._placeholder.setText("Analyse interrompue.")
+        self._placeholder.show()
+        self.status.emit("Analyse interrompue.")
+        self.loading_finished.emit()
+
+    def is_scanning(self) -> bool:
+        return self._scanning
+
+    def is_recursive(self) -> bool:
+        """True si la galerie affiche l'arborescence complète du dossier source."""
+        return self._recursive
+
+    def source_root(self) -> str:
+        return self._source_root
 
     def _reset_filters(self) -> None:
         """Réinitialise tri/ordre/regroupement/filtre/recherche (sans réaffichage)."""
@@ -479,8 +663,14 @@ class GalleryView(QWidget):
         self._total = len(media_list)
         self._done = 0
         self._loading = True
+        self._load_started = time.perf_counter()
         self.loading_progress.emit(self._done, self._total)
 
+        perf.note(
+            "affichage : %d media(s) dont %d video(s)",
+            len(media_list),
+            sum(1 for m in media_list if m.is_video),
+        )
         # Regroupe par section selon le mode de regroupement (dossier ou date).
         by_section: dict[str, list[scanner.MediaFile]] = {}
         keys: dict[str, tuple] = {}
@@ -488,10 +678,14 @@ class GalleryView(QWidget):
             label, key = self._section_of(media)
             by_section.setdefault(label, []).append(media)
             keys[label] = key
-        for name in sorted(by_section, key=lambda n: keys[n]):
-            self._create_section(name, keys[name])
-            for media in by_section[name]:
-                self._append_item(name, media.path, media.is_video)
+        with perf.step(f"affichage complet ({len(media_list)} media)"):
+            for name in sorted(by_section, key=lambda n: keys[n]):
+                self._create_section(name, keys[name])
+                for media in by_section[name]:
+                    self._append_item(name, media.path, media.is_video)
+        # La géométrie n'est connue qu'après le passage de Qt : on repriorise
+        # juste après, pour que le haut de la galerie s'affiche en premier.
+        QTimer.singleShot(0, self._prioritize_visible)
 
     def _clear_view(self) -> None:
         """Vide les sections affichées (sans toucher au cache ni aux points GPS)."""
@@ -566,22 +760,27 @@ class GalleryView(QWidget):
     # --- Gestion des items ---
     def _append_item(self, section_name: str, path: str, is_video: bool) -> None:
         """Ajoute un item dans une section et déclenche sa vignette si besoin."""
-        item = QStandardItem()
-        item.setEditable(False)
-        item.setText(os.path.basename(path))
-        item.setData(path, PATH_ROLE)
-        item.setToolTip(path)
-        item.setIcon(self._video_icon if is_video else self._pending_icon)
+        with perf.measure("galerie: creation item"):
+            item = QStandardItem()
+            item.setEditable(False)
+            item.setText(os.path.basename(path))
+            item.setData(path, PATH_ROLE)
+            item.setToolTip(path)
+            item.setIcon(self._video_icon if is_video else self._pending_icon)
 
-        section = self._sections[section_name]
-        section.model.appendRow(item)
-        self._items[path] = item
-        self._item_section[path] = section_name
-        self._update_header(section_name)
-        section.view.refresh_height()
+            section = self._sections[section_name]
+            section.model.appendRow(item)
+            self._items[path] = item
+            self._item_section[path] = section_name
+
+        with perf.measure("galerie: entete section"):
+            self._update_header(section_name)
+        with perf.measure("galerie: refresh_height"):
+            section.view.refresh_height()
 
         # Génération (ou récupération en cache) de la vraie vignette.
-        self._thumbnails.request(path, is_video, self._thumb_size)
+        with perf.measure("galerie: demande vignette"):
+            self._thumbnails.request(path, is_video, self._thumb_size)
 
     def _remove_item(self, path: str) -> None:
         """Retire un item de la galerie (et sa section si elle devient vide)."""
@@ -628,11 +827,18 @@ class GalleryView(QWidget):
         return scanner.ROOT_SECTION_LABEL if rel == "." else rel
 
     def _is_within_source(self, path: str) -> bool:
-        """True si *path* est dans l'arborescence du dossier source."""
+        """True si *path* relève de l'affichage courant de la galerie.
+
+        En mode non récursif, la galerie ne montre que le contenu **direct** du
+        dossier source : un fichier copié dans un sous-dossier ne doit donc pas
+        y apparaître, contrairement au mode récursif.
+        """
         if not self._source_root:
             return False
         root = os.path.normcase(os.path.abspath(self._source_root))
         target = os.path.normcase(os.path.abspath(path))
+        if not self._recursive:
+            return os.path.dirname(target) == root
         try:
             return os.path.commonpath([root, target]) == root
         except ValueError:
@@ -909,6 +1115,74 @@ class GalleryView(QWidget):
                 first_index, QItemSelectionModel.SelectionFlag.Current
             )
 
+    # --- Priorité au contenu visible (SPEC 5.3 : servir d'abord ce qu'on regarde) ---
+    def _visible_paths(self, marge: float = 0.5) -> list[str]:
+        """Chemins des vignettes dans la zone visible, plus une marge.
+
+        La marge (en fraction de hauteur d'écran, au-dessus et en dessous) évite
+        que les vignettes n'arrivent qu'après coup quand on fait défiler
+        doucement.
+
+        Le calcul est arithmétique — position de section, hauteur de cellule,
+        nombre de colonnes — et non widget par widget : il est appelé à chaque
+        défilement et ne doit rien coûter.
+        """
+        if not self._sections:
+            return []
+        viewport = self._scroll.viewport()
+        haut = self._scroll.verticalScrollBar().value()
+        hauteur = viewport.height()
+        y_min = haut - marge * hauteur
+        y_max = haut + hauteur + marge * hauteur
+
+        chemins: list[str] = []
+        for name in self._section_order:
+            section = self._sections.get(name)
+            if section is None:
+                continue
+            view = section.view
+            vue_y = view.y()
+            if vue_y + view.height() < y_min or vue_y > y_max:
+                continue  # section entièrement hors champ
+            grille = view.gridSize()
+            if grille.height() <= 0 or grille.width() <= 0:
+                continue
+            largeur = max(view.viewport().width(), grille.width())
+            colonnes = max(1, largeur // grille.width())
+            total = section.model.rowCount()
+            premiere = max(0, int((y_min - vue_y) // grille.height()))
+            derniere = int((y_max - vue_y) // grille.height())
+            for ligne in range(premiere, derniere + 1):
+                for colonne in range(colonnes):
+                    rang = ligne * colonnes + colonne
+                    if rang >= total:
+                        break
+                    chemin = section.model.index(rang, 0).data(PATH_ROLE)
+                    if chemin:
+                        chemins.append(chemin)
+        return chemins
+
+    def _schedule_prioritize(self) -> None:
+        """Anti-rebond : inutile de recalculer à chaque pixel de défilement."""
+        self._priority_timer.start(80)
+
+    def _prioritize_visible(self) -> None:
+        """Fait passer devant les vignettes actuellement à l'écran.
+
+        Rien n'est abandonné : les médias hors champ restent dans la file et
+        seront traités ensuite, car la carte et les statistiques ont besoin de
+        **tous** les fichiers.
+        """
+        chemins = self._visible_paths()
+        if not chemins:
+            return
+        photos = [p for p in chemins if not scanner.is_video(p)]
+        videos = [p for p in chemins if scanner.is_video(p)]
+        if photos:
+            self._thumbnails.prioritize(photos, PRIORITY_VISIBLE_PHOTO)
+        if videos:
+            self._thumbnails.prioritize(videos, PRIORITY_VISIBLE_VIDEO)
+
     # --- Points géolocalisés (pour la carte) ---
     def _on_geo_point(self, path: str, lat: float, lon: float) -> None:
         self._geo[path] = (lat, lon)
@@ -932,7 +1206,9 @@ class GalleryView(QWidget):
         ]
 
     def _flush_geo(self) -> None:
-        self.geo_points_changed.emit(self._geo_payload())
+        with perf.step(f"payload carte ({len(self._geo)} points)"):
+            payload = self._geo_payload()
+        self.geo_points_changed.emit(payload)
 
     def geo_points(self) -> list[dict]:
         """Points géolocalisés courants : {id, lat, lon, name, thumb}."""
@@ -959,10 +1235,11 @@ class GalleryView(QWidget):
         return f"{path}\n{'GPS présent' if has_gps else '⚠ Sans coordonnées GPS'}"
 
     def _on_thumbnail_ready(self, path: str, pixmap, has_gps: bool) -> None:
-        item = self._items.get(path)
-        if item is not None:
-            item.setIcon(QIcon(self._decorate(path, pixmap, has_gps)))
-            item.setToolTip(self._gps_tooltip(path, has_gps))
+        with perf.measure("galerie: reception vignette"):
+            item = self._items.get(path)
+            if item is not None:
+                item.setIcon(QIcon(self._decorate(path, pixmap, has_gps)))
+                item.setToolTip(self._gps_tooltip(path, has_gps))
         self._advance_progress()
 
     def _on_thumbnail_failed(self, path: str, has_gps: bool) -> None:
@@ -981,6 +1258,12 @@ class GalleryView(QWidget):
         self.loading_progress.emit(self._done, self._total)
         if self._done >= self._total:
             self._loading = False
+            perf.note(
+                "chargement termine : %d vignette(s) en %.2f s",
+                self._total,
+                time.perf_counter() - self._load_started,
+            )
+            perf.report("Bilan du chargement")
             self.loading_finished.emit()
 
     # --- Tri / filtre / recherche ---

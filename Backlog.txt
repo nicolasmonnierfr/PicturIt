@@ -60,6 +60,14 @@ Hors périmètre v1 (SPEC) :
 
 ## LIVRÉ
 -------------------------------------------------------------------------------
+Tests (séance 4) :
+- [x] Couverture de core/ portée de 66 % à 83 % : logs (31 -> 94 %), perf
+      (38 -> 98 %), thumbnails (25 -> 58 %), metadata (89 -> 94 %).
+- [x] Couvert en priorité ce qui n'existait que sous forme de scripts jetables :
+      file d'attente prioritaire, lecture d'en-tête, vignette EXIF et
+      orientation, récolte des métadonnées pendant le décodage.
+- [x] logs : vérifie surtout ce qui n'est PAS écrit (contrainte SPEC 2).
+
 Interface (séance 4) :
 - [x] Édition « Remplacer » : côté du switch en ambre + avertissement une fois
       par session avant la première écriture destructive. Couvre aussi la

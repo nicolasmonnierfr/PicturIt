@@ -253,8 +253,8 @@ travail est surtout de l'attente réseau. Réglable par `PICTURIT_THREADS`.
 .\.venv\Scripts\python.exe -m pytest --cov=core --cov-report=term-missing
 ```
 
-Périmètre : **`core/` uniquement**, soit la logique métier sans Qt (plus de 90 %
-de couverture). Aucun test ne crée de `QApplication` : le harnais reste rapide
+Périmètre : **`core/` uniquement** (plus de 80 % de couverture ; au-delà de
+90 % hors parties Qt de `thumbnails`). Aucun test ne crée de `QApplication` : le harnais reste rapide
 et n'a besoin ni d'écran ni de QtWebEngine. Seul `test_header_strategy.py`
 importe PySide6, pour une classe de logique pure qui y réside.
 
@@ -267,6 +267,12 @@ importe PySide6, pour une classe de logique pure qui y réside.
 | `test_operations.py` | `operations` | move/copy/rename/trash, pile d'annulation LIFO, journal |
 | `test_editing.py` | `editing` | rotation JPEG **vérifiée sans perte** (pixels stockés inchangés) |
 | `test_fftools.py` | `fftools` | résolution des binaires, timeout, binaire absent |
+| `test_logs.py` | `logs` | **rien n'est écrit** sans demande explicite (SPEC 2), niveaux, idempotence |
+| `test_perf.py` | `perf` | inactif par défaut, agrégation, exceptions propagées intactes |
+| `test_imaging`* | `imaging` | via `test_image_loading.py` : images tronquées acceptées |
+| `test_image_loading.py` | `thumbnails` | en-tête, vignette EXIF + orientation, décodage, récolte des métadonnées |
+| `test_thumbnail_queue.py` | `thumbnails` | ordre de service, repriorisation, rien d'abandonné, dimensionnement du pool |
+| `test_header_strategy.py` | `thumbnails` | décision figée, coupure sous concurrence |
 
 Deux règles à respecter en ajoutant des tests :
 - **Jamais la vraie corbeille** : la fixture `fake_trash` (conftest) remplace
@@ -279,7 +285,8 @@ Le conftest fournit `write_photo()` (JPEG de test daté/géolocalisé via piexif
 et `pad_to()` (égalise la taille de deux fichiers de contenus différents, pour
 reproduire le cas « identique par taille + date »).
 
-**Non couvert** : `core/thumbnails.py` (Qt) et tout `ui/` — validés manuellement,
+**Non couvert** : les parties Qt de `core/thumbnails.py` (workers, overlays,
+cache de QPixmap) et tout `ui/` — validés manuellement,
 ou par scripts offscreen jetables (`QT_QPA_PLATFORM=offscreen` +
 `AA_ShareOpenGLContexts` avant `QApplication`).
 

@@ -15,7 +15,9 @@ from PySide6.QtWidgets import QApplication
 # l'attribut doit être posé AVANT la création de QApplication.
 QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
-from ui.main_window import MainWindow  # noqa: E402 (après l'attribut Qt)
+# Import volontairement tardif : il entraîne la création de widgets QtWebEngine
+# et doit donc suivre l'attribut ci-dessus (E402 neutralisé dans ruff.toml).
+from ui.main_window import MainWindow
 
 
 def _resource(name: str) -> str:

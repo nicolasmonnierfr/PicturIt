@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QRect, QRectF, QSize, QUrl, Qt, Signal
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget

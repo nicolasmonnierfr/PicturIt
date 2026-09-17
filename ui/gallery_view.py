@@ -24,13 +24,15 @@ from PySide6.QtCore import (
     QItemSelection,
     QItemSelectionModel,
     QMimeData,
+    QObject,
+    QRunnable,
     QSize,
     Qt,
+    QThreadPool,
     QTimer,
     QUrl,
     Signal,
 )
-from PySide6.QtCore import QObject, QRunnable, QThreadPool
 from PySide6.QtGui import QColor, QDrag, QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QApplication,
@@ -97,7 +99,9 @@ _CELL_PADDING_H = 44
 class _SectionListView(QListView):
     """Vue icônes d'une section : hauteur ajustée au contenu + drag fichiers."""
 
-    def __init__(self, thumb_size: int = THUMB_SIZE, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, thumb_size: int = THUMB_SIZE, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self.setViewMode(QListView.ViewMode.IconMode)
         self.setMovement(QListView.Movement.Static)
@@ -168,7 +172,7 @@ class _SectionListView(QListView):
 class _Section:
     """Regroupe les widgets d'une section (en-tête + vue + modèle)."""
 
-    __slots__ = ("name", "header", "view", "model")
+    __slots__ = ("header", "model", "name", "view")
 
     def __init__(self, name, header, view, model) -> None:
         self.name = name
@@ -640,7 +644,9 @@ class GalleryView(QWidget):
         self._thumbnails.invalidate(path)
         item = self._items.get(path)
         if item is not None:
-            item.setIcon(self._video_icon if scanner.is_video(path) else self._pending_icon)
+            item.setIcon(
+                self._video_icon if scanner.is_video(path) else self._pending_icon
+            )
             self._thumbnails.request(path, scanner.is_video(path), self._thumb_size)
 
     def add_existing_file(self, path: str) -> None:
@@ -665,10 +671,9 @@ class GalleryView(QWidget):
                 if self._is_within_source(ch.dst):
                     self._thumbnails.rekey(ch.src, ch.dst)
                     self._add_path(ch.dst)
-            elif ch.kind == COPIED:
-                if self._is_within_source(ch.dst):
-                    self._thumbnails.duplicate(ch.src, ch.dst)
-                    self._add_path(ch.dst)
+            elif ch.kind == COPIED and self._is_within_source(ch.dst):
+                self._thumbnails.duplicate(ch.src, ch.dst)
+                self._add_path(ch.dst)
 
     # --- Sélection ---
     def selected_paths(self) -> list[str]:
@@ -762,7 +767,9 @@ class GalleryView(QWidget):
         import subprocess
 
         try:
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
+            subprocess.Popen(  # noqa: S603 — explorateur Windows
+                ["explorer", "/select,", os.path.normpath(path)]  # noqa: S607
+            )
         except OSError:
             pass
 
@@ -847,7 +854,8 @@ class GalleryView(QWidget):
             to_select.extend(ordered[1:])  # garde le premier de chaque groupe
         self.select_paths(to_select)
         self.status.emit(
-            f"{len(to_select)} fichier(s) sélectionné(s) (1er de chaque groupe conservé). "
+            f"{len(to_select)} fichier(s) sélectionné(s) "
+            "(1er de chaque groupe conservé). "
             "Suppr pour les envoyer à la corbeille."
         )
 
@@ -927,7 +935,7 @@ class GalleryView(QWidget):
         self.geo_points_changed.emit(self._geo_payload())
 
     def geo_points(self) -> list[dict]:
-        """Renvoie la liste courante des points géolocalisés {id, lat, lon, name, thumb}."""
+        """Points géolocalisés courants : {id, lat, lon, name, thumb}."""
         return self._geo_payload()
 
     # --- Réception des vignettes ---
@@ -939,7 +947,10 @@ class GalleryView(QWidget):
             pixmap = overlay_nogps(pixmap)
         color = self._dup_color.get(path)
         if color is not None:
-            qcolor = _COLOR_IDENTICAL if color == duplicates.COLOR_IDENTICAL else _COLOR_SIMILAR
+            qcolor = (
+                _COLOR_IDENTICAL if color == duplicates.COLOR_IDENTICAL
+                else _COLOR_SIMILAR
+            )
             pixmap = overlay_border(pixmap, qcolor)
         return pixmap
 

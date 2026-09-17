@@ -17,7 +17,6 @@ de milliers de fichiers inutilement.
 from __future__ import annotations
 
 import hashlib
-import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -104,7 +103,7 @@ def analyze(paths: list[str]) -> DupIndex:
     for p in paths:
         by_size[metas[p].size].append(p)
     by_hash: dict[str, list[str]] = defaultdict(list)
-    for size, group in by_size.items():
+    for group in by_size.values():
         if len(group) < 2:
             continue
         for p in group:

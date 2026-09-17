@@ -53,7 +53,7 @@ def ffprobe_path() -> str | None:
 def run(args: list[str], timeout: float = 20.0) -> subprocess.CompletedProcess | None:
     """Exécute un binaire ff* sans fenêtre console. Renvoie None en cas d'échec."""
     try:
-        return subprocess.run(
+        return subprocess.run(  # noqa: S603 — args construits en interne
             args,
             capture_output=True,
             timeout=timeout,

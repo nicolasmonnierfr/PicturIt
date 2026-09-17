@@ -52,7 +52,8 @@ class TestMove:
 
     def test_contenu_preserve(self, manager, source, cible):
         changes = manager.move([str(source / "photo.jpg")], str(cible))
-        assert open(changes[0].dst, "rb").read() == b"pixels de la photo"
+        with open(changes[0].dst, "rb") as fh:
+            assert fh.read() == b"pixels de la photo"
 
     def test_dossier_cible_cree(self, manager, source, tmp_path):
         """Un dossier cible inexistant est créé à la volée."""

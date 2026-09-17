@@ -27,7 +27,11 @@ ffprobe** (dans `./bin/`). **Zéro persistance disque** (tout en RAM ; seules
 - Installeur : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.1.0.exe`.
 - Tests : `.\.venv\Scripts\python.exe -m pytest` (dossier `tests/`, ~190 tests sur
   `core/`, sans Qt). Couverture : `-m pytest --cov=core --cov-report=term-missing`.
-  ⚠️ `ui/` et `core/thumbnails.py` ne sont **pas** couverts (validation manuelle).
+  ⚠️ `ui/` et `core/thumbnails.py` ne sont **pas** couverts (validation manuelle) ;
+  garde-fou : `python scripts/verifier_ui.py` (construit la fenêtre hors écran).
+- Lint : `.\.venv\Scripts\python.exe -m ruff check .` (config dans `ruff.toml`).
+- CI : `.github/workflows/ci.yml` (windows-latest) = lint + tests + garde-fou UI,
+  sur chaque push/PR vers `main`. **Vérifier que la CI passe avant de conclure.**
 
 ## Conventions
 - Commentaires et libellés UI **en français**.

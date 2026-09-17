@@ -1,0 +1,48 @@
+# Configuration ruff de PicturIt (lint ; voir pytest.ini pour les tests).
+#
+#   .\.venv\Scripts\python.exe -m ruff check .          # vérifier
+#   .\.venv\Scripts\python.exe -m ruff check . --fix    # corriger l'automatisable
+
+target-version = "py312"
+line-length = 90
+
+[lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # tri des imports
+    "N",        # conventions de nommage (les # noqa: N802 couvrent l'API Qt)
+    "B",        # pièges courants (flake8-bugbear)
+    "BLE",      # except trop large (les replis voulus portent un # noqa: BLE001)
+    "S",        # sécurité (flake8-bandit)
+    "SIM",      # simplifications
+    "PERF",     # performance
+    "RUF",      # règles propres à ruff
+]
+
+ignore = [
+    # Convention du projet : tolérer les erreurs sans planter. Les replis
+    # silencieux (fichier corrompu, EXIF absent, codec manquant) sont
+    # délibérés et documentés dans ARCHITECTURE §7.
+    "S110",    # try-except-pass
+    "S112",    # try-except-continue
+    "SIM105",  # contextlib.suppress : même cas, try/except reste plus lisible ici
+    # Libellés en français : « × » (1920 × 1080), guillemets et apostrophes
+    # typographiques sont voulus, pas des homoglyphes accidentels.
+    "RUF001", "RUF002", "RUF003",
+]
+
+[lint.per-file-ignores]
+# main.py doit poser AA_ShareOpenGLContexts AVANT d'importer ui/ : l'import
+# tardif est structurel, pas un oubli.
+"main.py" = ["E402"]
+# Les tests accèdent volontairement aux fonctions privées des modules testés
+# et utilisent assert (c'est leur raison d'être).
+"tests/*" = ["S101", "SLF001"]
+# Le pont QWebChannel expose ses signaux et ses slots au JavaScript : leurs
+# noms camelCase font partie du contrat avec map.html, on ne peut pas les
+# renommer en snake_case.
+"ui/map_panel.py" = ["N802", "N815"]
+
+[lint.isort]
+known-first-party = ["core", "ui"]

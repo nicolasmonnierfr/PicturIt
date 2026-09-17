@@ -47,7 +47,7 @@ def _dms_rational(value: float) -> tuple:
     minutes_float = (value - degrees) * 60
     minutes = int(minutes_float)
     seconds = (minutes_float - minutes) * 60
-    return ((degrees, 1), (minutes, 1), (int(round(seconds * 10000)), 10000))
+    return ((degrees, 1), (minutes, 1), (round(seconds * 10000), 10000))
 
 
 def write_photo(

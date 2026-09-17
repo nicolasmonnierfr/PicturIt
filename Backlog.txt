@@ -57,6 +57,10 @@ Professionnalisation (séance 3) :
       v1.0.0 / v1.0.1 / v1.1.0 et Release v1.1.0 avec l'installeur en asset.
 - [x] Harnais de tests `tests/` (pytest) : ~190 tests sur `core/`, 94 % de
       couverture, sans Qt ni ffmpeg (binaires simulés). Voir ARCHITECTURE §8.
+- [x] Lint ruff (`ruff.toml`) : code source entièrement conforme ; règles
+      contredisant les conventions du projet désactivées avec justification.
+- [x] CI GitHub Actions (`windows-latest`) : lint + tests + construction de
+      l'interface hors écran (`scripts/verifier_ui.py`), sur push et PR.
 - [x] Correctif `operations.rename` : le garde-fou « nom inchangé » était
       inopérant (`_unique_dest` voyait le fichier comme sa propre collision),
       d'où un suffixe `_1` parasite en renommant un fichier vers son nom actuel.

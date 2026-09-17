@@ -12,6 +12,7 @@ Aucune persistance disque (cf. SPEC 2).
 
 from __future__ import annotations
 
+from PIL import Image, ImageOps
 from PySide6.QtCore import (
     QBuffer,
     QByteArray,
@@ -19,7 +20,6 @@ from PySide6.QtCore import (
     QObject,
     QPointF,
     QRunnable,
-    QSize,
     Qt,
     QThreadPool,
     Signal,
@@ -32,7 +32,6 @@ from PySide6.QtGui import (
     QPixmap,
     QPolygonF,
 )
-from PIL import Image, ImageOps
 
 from core import fftools, metadata
 

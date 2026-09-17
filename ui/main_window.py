@@ -8,6 +8,9 @@ Orchestre les panneaux et les opérations de tri :
 - Suppr = corbeille, Ctrl+Z = annuler, export du journal à la fermeture.
 """
 
+import os
+import shutil
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -26,9 +29,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-import os
-import shutil
 
 from core import editing, metadata, scanner
 from core.operations import OperationManager
@@ -217,7 +217,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(done)
-        self.progress_bar.setFormat(f"Vignettes %v / %m")
+        self.progress_bar.setFormat("Vignettes %v / %m")
 
     def _on_loading_finished(self) -> None:
         """Cache la barre de progression une fois le chargement terminé."""
@@ -331,8 +331,9 @@ class MainWindow(QMainWindow):
             )
             if not ok or not prefix:
                 return
-            for path in paths:
-                items.append((path, f"{prefix}{os.path.basename(path)}"))
+            items = [
+                (path, f"{prefix}{os.path.basename(path)}") for path in paths
+            ]
         elif mode == "datetime":
             for path in paths:
                 dt = metadata.read(path).datetime_original

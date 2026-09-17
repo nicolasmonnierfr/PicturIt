@@ -1,0 +1,72 @@
+# Intégration continue de PicturIt.
+#
+# PicturIt ne cible que Windows (corbeille via send2trash, ffmpeg.exe,
+# chemins insensibles à la casse) : la CI tourne donc sur windows-latest,
+# la seule plateforme réellement supportée.
+#
+# Les tests portent sur core/ et ne créent aucune fenêtre Qt : ni écran ni
+# QtWebEngine ne sont nécessaires, et ffmpeg/ffprobe sont simulés.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Une exécution obsolète est annulée quand on repousse sur la même branche.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Ruff seul : inutile d'installer PySide6 pour analyser le code.
+      - name: Installer ruff
+        run: pip install ruff
+
+      - name: Vérifier le style et les erreurs
+        run: ruff check . --output-format=github
+
+  tests:
+    name: Tests (pytest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      # requirements.txt est installé en entier (PySide6 compris) pour valider
+      # au passage que les dépendances déclarées s'installent sur une machine
+      # neuve, même si les tests eux-mêmes n'importent pas Qt.
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lancer les tests
+        run: python -m pytest --cov=core --cov-report=term-missing
+
+      # Garde-fou : l'application doit rester constructible. Cette étape
+      # rattrape les erreurs d'import ou de câblage de signaux que le harnais
+      # core/ ne peut pas voir.
+      - name: Vérifier que l'interface se construit
+        run: python scripts/verifier_ui.py

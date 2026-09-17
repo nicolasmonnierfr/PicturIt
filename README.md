@@ -59,6 +59,35 @@ L'interface (`ui/`) et `core/thumbnails.py` restent validés manuellement ; voir
 [ARCHITECTURE.md](ARCHITECTURE.md#tests-automatisés-tests) pour le détail du
 harnais et les règles à suivre en ajoutant des tests.
 
+Un garde-fou complémentaire construit la fenêtre complète hors écran, ce que le
+harnais `core/` ne peut pas couvrir :
+
+```powershell
+.\.venv\Scripts\python.exe scripts/verifier_ui.py
+```
+
+## Qualité du code
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .          # vérifier
+.\.venv\Scripts\python.exe -m ruff check . --fix    # corriger l'automatisable
+```
+
+La configuration est dans [ruff.toml](ruff.toml). Les règles qui contredisent
+les conventions du projet y sont désactivées avec leur justification (replis
+silencieux volontaires, typographie française, signaux camelCase imposés par
+QWebChannel).
+
+## Intégration continue
+
+Chaque push et chaque pull request sur `main` déclenchent
+[la CI GitHub Actions](.github/workflows/ci.yml), sur **windows-latest** — la
+seule plateforme supportée :
+
+1. **Lint** — `ruff check`
+2. **Tests** — `pytest` avec couverture, puis construction de l'interface hors
+   écran via `scripts/verifier_ui.py`
+
 ## Binaires ffmpeg / ffprobe
 
 Télécharger une build Windows de ffmpeg (ex. gyan.dev / BtbN) et copier :

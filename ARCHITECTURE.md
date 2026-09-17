@@ -216,3 +216,29 @@ reproduire le cas « identique par taille + date »).
 **Non couvert** : `core/thumbnails.py` (Qt) et tout `ui/` — validés manuellement,
 ou par scripts offscreen jetables (`QT_QPA_PLATFORM=offscreen` +
 `AA_ShareOpenGLContexts` avant `QApplication`).
+
+### Garde-fou interface (`scripts/verifier_ui.py`)
+
+```powershell
+.\.venv\Scripts\python.exe scripts/verifier_ui.py
+```
+
+Construit réellement `MainWindow` hors écran : rattrape les imports cassés et les
+signaux connectés à un slot disparu, que le harnais `core/` ne peut pas voir.
+
+### Lint (`ruff.toml`)
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+```
+
+Règles désactivées **volontairement**, à ne pas réactiver sans raison :
+`S110`/`S112`/`SIM105` (replis silencieux voulus, §7), `RUF001-003` (typographie
+française : « × », guillemets), et `N802`/`N815` sur `ui/map_panel.py` (les noms
+camelCase des signaux et slots font partie du contrat avec `map.html`).
+
+### Intégration continue (`.github/workflows/ci.yml`)
+
+Sur chaque push et PR vers `main`, **windows-latest** (seule plateforme
+supportée) : job `lint` (ruff seul, sans Qt) puis job `tests` (installation
+complète des dépendances → pytest + couverture → garde-fou interface).

@@ -151,7 +151,9 @@ class MapPanel(QWidget):
 
     def refresh(self) -> None:
         """Force le recalcul de la taille de la carte (après affichage/déplacement)."""
-        self._view.page().runJavaScript("if (window.map || true) { map.invalidateSize(); }")
+        self._view.page().runJavaScript(
+            "if (window.map || true) { map.invalidateSize(); }"
+        )
 
     def _on_enlarge_clicked(self) -> None:
         self._enlarged = not self._enlarged

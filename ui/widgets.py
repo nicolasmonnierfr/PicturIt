@@ -18,6 +18,8 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QFont,
+    QFontMetrics,
     QIcon,
     QPainter,
     QPen,
@@ -178,6 +180,18 @@ class ToggleSlider(QWidget):
         self._warning_side = warning_side
         self._left = QLabel(left)
         self._right = QLabel(right)
+
+        # Les libellés sont figés à leur largeur **en gras**, la plus grande des
+        # deux : sans cela, la mise en gras du côté actif élargit le texte et
+        # décale l'interrupteur à chaque bascule.
+        for label, texte, alignement in (
+            (self._left, left, Qt.AlignmentFlag.AlignRight),
+            (self._right, right, Qt.AlignmentFlag.AlignLeft),
+        ):
+            gras = QFont(label.font())
+            gras.setBold(True)
+            label.setFixedWidth(QFontMetrics(gras).horizontalAdvance(texte) + 2)
+            label.setAlignment(alignement | Qt.AlignmentFlag.AlignVCenter)
 
         self._switch = _SwitchTrack(warning=False)
         self._switch.setAccessibleName(f"{left} ou {right}")

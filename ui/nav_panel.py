@@ -1,8 +1,10 @@
 """Colonne gauche — Navigation.
 
 Divisée en deux parties :
-- Haut : arborescence de dossiers (explorateur Windows) via QFileSystemModel.
-  - Clic gauche sur un dossier → le charge comme dossier source (galerie récursive).
+- Haut : bouton « Inclure les sous-dossiers » + arborescence de dossiers
+  (explorateur Windows) via QFileSystemModel.
+  - Clic gauche sur un dossier → le charge comme dossier source (contenu
+    direct seulement ; le parcours récursif est un geste explicite).
   - Clic droit sur un dossier → menu « Épingler » (ajout à l'accès rapide).
   - Glisser-déposer de fichiers depuis la galerie → tri vers ce dossier.
 - Bas : accès rapide (dossiers cibles épinglés, raccourcis 1-9).
@@ -144,6 +146,9 @@ class NavPanel(QWidget):
     target_activated = Signal(str, bool)
     # Émis lors d'un glisser-déposer de fichiers : (paths, cible, copier).
     files_dropped = Signal(list, str, bool)
+    # Bouton « Inclure les sous-dossiers » : la fenêtre principale décide
+    # quoi en faire (elle seule connaît l'état de la galerie).
+    recursive_toggled = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -158,6 +163,18 @@ class NavPanel(QWidget):
         tree_layout = QVBoxLayout(tree_container)
         tree_layout.setContentsMargins(4, 4, 4, 4)
         tree_layout.addWidget(QLabel("Arborescence"))
+
+        # Le parcours récursif est placé juste au-dessus de l'arborescence,
+        # là où se fait le choix du dossier, plutôt que dans la barre du haut.
+        self.recursive_button = QPushButton("Inclure les sous-dossiers")
+        self.recursive_button.setToolTip(
+            "Parcourir toute l'arborescence du dossier source.\n"
+            "Peut prendre plusieurs minutes sur un disque entier ; "
+            "l'analyse reste interruptible."
+        )
+        self.recursive_button.setEnabled(False)  # aucun dossier source au départ
+        self.recursive_button.clicked.connect(self.recursive_toggled)
+        tree_layout.addWidget(self.recursive_button)
 
         self._fs_model = QFileSystemModel(self)
         self._fs_model.setRootPath("")
@@ -209,6 +226,17 @@ class NavPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
+
+    # --- Bouton de parcours récursif ---
+    def set_recursive_available(self, available: bool) -> None:
+        """Active le bouton une fois qu'un dossier source est choisi."""
+        self.recursive_button.setEnabled(available)
+
+    def set_recursive_state(self, recursive: bool) -> None:
+        """Le bouton bascule entre étendre l'affichage et revenir au dossier seul."""
+        self.recursive_button.setText(
+            "Ce dossier seulement" if recursive else "Inclure les sous-dossiers"
+        )
 
     # --- Arborescence (source + épinglage) ---
     def _on_tree_clicked(self, index) -> None:

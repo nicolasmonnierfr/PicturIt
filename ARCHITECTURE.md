@@ -44,11 +44,11 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 | Fichier | Rôle | Signaux émis (vers main_window) |
 |---|---|---|
 | `main_window.py` | Orchestrateur, raccourcis, barres, contrôleur d'édition | — |
-| `nav_panel.py` | Arborescence + accès rapide (épinglage) | `source_changed`, `target_activated(path,copier)`, `files_dropped`, |
+| `nav_panel.py` | Bouton « Inclure les sous-dossiers » + arborescence + accès rapide (épinglage) | `source_changed(path,recursive)`, `target_activated(path,copier)`, `files_dropped`, `recursive_toggled` |
 | `gallery_view.py` | Galerie (sections, vignettes, tri/filtre/recherche, doublons) | `media_selected`, `selection_changed`, `geo_points_changed`, `loading_progress/finished`, `status`, `rename_requested`, `rotate_selection_requested`, `summary_changed`, `fullscreen_requested` |
-| `preview_panel.py` | Aperçu image zoomable / lecteur vidéo / métadonnées + barre d'édition | `rotate_requested(bool)`, `crop_committed(box)`, `convert_requested(ext)` |
+| `preview_panel.py` | Aperçu image zoomable / lecteur vidéo (transport, progression, volume) / métadonnées + barre d'édition | `rotate_requested(bool)`, `crop_committed(box)`, `convert_requested(ext)` |
 | `map_panel.py` | Carte Leaflet (QWebEngineView + QWebChannel) | `markers_selected(list)`, `enlarge_toggled(bool)` |
-| `fullscreen.py` | Fenêtre plein écran qui **héberge le PreviewPanel reparenté** ; fermeture par **Échap ou bouton ✕** flottant (haut-droit) | `nav(int)`, `closed` |
+| `fullscreen.py` | Fenêtre plein écran qui **héberge le PreviewPanel reparenté** ; navigation par **←/→ ou flèches ‹ › flottantes** (bords latéraux), fermeture par **Échap ou ✕** | `nav(int)`, `closed` |
 | `widgets.py` | `ToggleSlider` (mini-bascule), `make_crop_icon` | — |
 
 ---

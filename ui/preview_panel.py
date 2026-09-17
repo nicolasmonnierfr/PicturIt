@@ -3,7 +3,8 @@
 Mode Aperçu :
 - grande image **zoomable et déplaçable** (molette = zoom, glisser = déplacer,
   double-clic = réajuster) — sans aucune modification du fichier ;
-- OU lecteur vidéo (QtMultimedia) avec lecture/pause ;
+- OU lecteur vidéo (QtMultimedia) avec barre de contrôle complète : retour
+  au début, ±10 s, lecture/pause, arrêt, progression déplaçable et volume ;
 - sous le média : métadonnées (nom, chemin, date, dimensions, taille, GPS).
 
 Mode Carte : conteneur accueillant le MapPanel (injecté par la fenêtre).
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QRubberBand,
+    QSlider,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -59,6 +61,20 @@ def _fmt_duration(seconds: float | None) -> str:
 
 def _fmt_datetime(value) -> str:
     return value.strftime("%d/%m/%Y %H:%M:%S") if value else "—"
+
+
+# Libellés de temps du lecteur vidéo : discrets mais lisibles sur fond sombre.
+_VIDEO_TIME_STYLE = "color:#d0d0d0; font-size:11px; min-width:38px;"
+
+
+def _fmt_position(ms: int) -> str:
+    """Formate une position de lecture : m:ss, ou h:mm:ss au-delà d'une heure."""
+    total = max(0, int(ms // 1000))
+    heures, reste = divmod(total, 3600)
+    minutes, secondes = divmod(reste, 60)
+    if heures:
+        return f"{heures}:{minutes:02d}:{secondes:02d}"
+    return f"{minutes}:{secondes:02d}"
 
 
 # Style des boutons de la barre d'édition : rendu lisible **y compris** en plein
@@ -206,6 +222,9 @@ class PreviewPanel(QWidget):
         super().__init__(parent)
 
         self._current_path: str | None = None
+        # True pendant un déplacement manuel de la barre de progression :
+        # le lecteur ne doit pas reprendre la main sur la position affichée.
+        self._seeking = False
 
         self.stack = QStackedWidget()
 
@@ -358,10 +377,16 @@ class PreviewPanel(QWidget):
             self._btn_crop_apply.setEnabled(False)
 
     def _build_video_widget(self) -> QWidget:
-        """Construit le lecteur vidéo (surface + contrôles lecture/pause)."""
+        """Construit le lecteur vidéo : surface + barre de contrôle complète.
+
+        Contrôles classiques d'un lecteur : retour au début, recul et avance de
+        10 s, lecture/pause, arrêt, barre de progression déplaçable avec les
+        temps, et volume avec coupure du son.
+        """
         container = QWidget()
         vlayout = QVBoxLayout(container)
         vlayout.setContentsMargins(0, 0, 0, 0)
+        vlayout.setSpacing(4)
 
         self._video_widget = QVideoWidget()
         vlayout.addWidget(self._video_widget, stretch=1)
@@ -372,14 +397,115 @@ class PreviewPanel(QWidget):
         self._player.setVideoOutput(self._video_widget)
         self._player.errorOccurred.connect(self._on_player_error)
         self._player.playbackStateChanged.connect(self._on_playback_state)
+        self._player.positionChanged.connect(self._on_position_changed)
+        self._player.durationChanged.connect(self._on_duration_changed)
 
+        # --- Ligne 1 : progression (temps écoulé / barre / durée) ---
+        ligne_position = QHBoxLayout()
+        ligne_position.setSpacing(6)
+        self._elapsed_label = QLabel("0:00")
+        self._elapsed_label.setStyleSheet(_VIDEO_TIME_STYLE)
+        ligne_position.addWidget(self._elapsed_label)
+
+        self._position_slider = QSlider(Qt.Orientation.Horizontal)
+        self._position_slider.setRange(0, 0)
+        self._position_slider.setToolTip("Position dans la vidéo")
+        self._position_slider.setAccessibleName("Position de lecture")
+        # sliderMoved n'est émis que par l'utilisateur : se brancher sur
+        # valueChanged créerait une boucle avec positionChanged.
+        self._position_slider.sliderMoved.connect(self._player.setPosition)
+        self._position_slider.sliderPressed.connect(self._on_seek_started)
+        self._position_slider.sliderReleased.connect(self._on_seek_finished)
+        ligne_position.addWidget(self._position_slider, stretch=1)
+
+        self._duration_label = QLabel("0:00")
+        self._duration_label.setStyleSheet(_VIDEO_TIME_STYLE)
+        ligne_position.addWidget(self._duration_label)
+        vlayout.addLayout(ligne_position)
+
+        # --- Ligne 2 : transport + volume ---
         controls = QHBoxLayout()
-        self._play_button = QPushButton("Lecture")
-        self._play_button.clicked.connect(self._toggle_play)
-        controls.addWidget(self._play_button)
+        controls.setSpacing(3)
+
+        self._btn_start = self._video_button(
+            "⏮", "Revenir au début", lambda: self._player.setPosition(0))
+        self._btn_back = self._video_button(
+            "⏪", "Reculer de 10 secondes", lambda: self._seek_relative(-10_000))
+        self._play_button = self._video_button("▶", "Lecture", self._toggle_play)
+        self._btn_forward = self._video_button(
+            "⏩", "Avancer de 10 secondes", lambda: self._seek_relative(10_000))
+        self._btn_stop = self._video_button("⏹", "Arrêter", self._stop_playback)
+        for bouton in (self._btn_start, self._btn_back, self._play_button,
+                       self._btn_forward, self._btn_stop):
+            controls.addWidget(bouton)
+
         controls.addStretch(1)
+
+        self._btn_mute = self._video_button("🔊", "Couper le son", self._toggle_mute)
+        controls.addWidget(self._btn_mute)
+        self._volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self._volume_slider.setRange(0, 100)
+        self._volume_slider.setValue(80)
+        self._volume_slider.setFixedWidth(90)
+        self._volume_slider.setToolTip("Volume")
+        self._volume_slider.setAccessibleName("Volume")
+        self._volume_slider.valueChanged.connect(self._on_volume_changed)
+        controls.addWidget(self._volume_slider)
+        self._audio.setVolume(0.8)
+
         vlayout.addLayout(controls)
         return container
+
+    @staticmethod
+    def _video_button(glyphe: str, infobulle: str, slot) -> QPushButton:
+        """Bouton carré de la barre de lecture."""
+        bouton = QPushButton(glyphe)
+        bouton.setToolTip(infobulle)
+        bouton.setAccessibleName(infobulle)
+        bouton.setFixedSize(30, 26)
+        bouton.setStyleSheet(_EDIT_BTN_STYLE)
+        bouton.clicked.connect(slot)
+        return bouton
+
+    # --- Lecture vidéo ---
+    def _seek_relative(self, delta_ms: int) -> None:
+        """Avance ou recule, en restant dans les bornes de la vidéo."""
+        duree = self._player.duration()
+        cible = max(0, self._player.position() + delta_ms)
+        self._player.setPosition(min(cible, duree) if duree > 0 else cible)
+
+    def _stop_playback(self) -> None:
+        self._player.stop()
+        self._position_slider.setValue(0)
+        self._elapsed_label.setText(_fmt_position(0))
+
+    def _toggle_mute(self) -> None:
+        coupe = not self._audio.isMuted()
+        self._audio.setMuted(coupe)
+        self._btn_mute.setText("🔇" if coupe else "🔊")
+        self._btn_mute.setToolTip("Rétablir le son" if coupe else "Couper le son")
+
+    def _on_volume_changed(self, valeur: int) -> None:
+        self._audio.setVolume(valeur / 100)
+        if valeur > 0 and self._audio.isMuted():
+            self._toggle_mute()  # bouger le volume rétablit le son
+
+    def _on_seek_started(self) -> None:
+        """Pendant un déplacement manuel, le lecteur ne pilote plus la barre."""
+        self._seeking = True
+
+    def _on_seek_finished(self) -> None:
+        self._seeking = False
+        self._player.setPosition(self._position_slider.value())
+
+    def _on_position_changed(self, position: int) -> None:
+        if not self._seeking:
+            self._position_slider.setValue(position)
+        self._elapsed_label.setText(_fmt_position(position))
+
+    def _on_duration_changed(self, duree: int) -> None:
+        self._position_slider.setRange(0, max(0, duree))
+        self._duration_label.setText(_fmt_position(duree))
 
     # --- API ---
     def set_mode(self, mode: int) -> None:
@@ -417,6 +543,9 @@ class PreviewPanel(QWidget):
     # --- Vidéo ---
     def _show_video(self, path: str) -> None:
         self._media_stack.setCurrentIndex(self._PAGE_VIDEO)
+        self._seeking = False
+        self._position_slider.setValue(0)
+        self._elapsed_label.setText(_fmt_position(0))
         self._set_edit_enabled(False)  # pas d'édition vidéo (hors périmètre)
         self._player.setSource(QUrl.fromLocalFile(os.path.abspath(path)))
         self._player.play()
@@ -429,7 +558,8 @@ class PreviewPanel(QWidget):
 
     def _on_playback_state(self, state) -> None:
         playing = state == QMediaPlayer.PlaybackState.PlayingState
-        self._play_button.setText("Pause" if playing else "Lecture")
+        self._play_button.setText("⏸" if playing else "▶")
+        self._play_button.setToolTip("Pause" if playing else "Lecture")
 
     def _on_player_error(self, _error, message: str) -> None:
         """Échec de lecture (codec manquant, fichier illisible) : message propre."""

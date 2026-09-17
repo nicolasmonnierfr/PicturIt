@@ -61,6 +61,14 @@ Hors périmètre v1 (SPEC) :
 
 ## LIVRÉ
 -------------------------------------------------------------------------------
+Interface (séance 4) :
+- [x] Bouton « Inclure les sous-dossiers » déplacé au-dessus de l'arborescence,
+      là où se fait le choix du dossier.
+- [x] Lecteur vidéo : contrôles classiques (⏮ ⏪ ▶/⏸ ⏩ ⏹), barre de progression
+      déplaçable avec temps écoulé/durée, volume et coupure du son.
+- [x] Plein écran : flèches ‹ › flottantes sur les bords pour passer d'un média
+      à l'autre (les touches ←/→ n'étaient signalées nulle part).
+
 Performance sur partage réseau (séance 4) :
 - [x] Scan asynchrone annulable ; clic = dossier seul, récursif sur geste.
 - [x] Journal de diagnostic débrayable (--log/--log-perf) + mesures.

@@ -86,19 +86,6 @@ class MainWindow(QMainWindow):
         self.browse_button.clicked.connect(self._on_browse)
         top_bar.addWidget(self.browse_button)
 
-        # Le scan récursif est une action explicite : le clic dans l'arbre
-        # n'affiche que le contenu direct du dossier (instantané), et ce bouton
-        # étend l'affichage à toute l'arborescence quand l'utilisateur le veut.
-        self.recursive_button = QPushButton("Inclure les sous-dossiers")
-        self.recursive_button.setToolTip(
-            "Parcourir toute l'arborescence du dossier source.\n"
-            "Peut prendre plusieurs minutes sur un disque entier ; "
-            "l'analyse reste interruptible."
-        )
-        self.recursive_button.setEnabled(False)  # aucun dossier source au départ
-        self.recursive_button.clicked.connect(self._on_toggle_recursive)
-        top_bar.addWidget(self.recursive_button)
-
         top_bar.addSpacing(20)
 
         # Mini-slider à deux états : Aperçu (gauche) / Carte (droite).
@@ -166,6 +153,7 @@ class MainWindow(QMainWindow):
         self.nav_panel.source_changed.connect(self._set_source)
         self.nav_panel.target_activated.connect(self._on_target_activated)
         self.nav_panel.files_dropped.connect(self._on_files_dropped)
+        self.nav_panel.recursive_toggled.connect(self._on_toggle_recursive)
         self.gallery_view.media_selected.connect(self.preview_panel.show_media)
         self.gallery_view.loading_progress.connect(self._on_loading_progress)
         self.gallery_view.loading_finished.connect(self._on_loading_finished)
@@ -217,8 +205,8 @@ class MainWindow(QMainWindow):
         """
         self._edit_working.clear()
         self.source_path_edit.setText(folder)
-        self.recursive_button.setEnabled(True)
-        self._update_recursive_button(recursive)
+        self.nav_panel.set_recursive_available(True)
+        self.nav_panel.set_recursive_state(recursive)
         self.statusBar().showMessage(
             f"Analyse de {folder} et de ses sous-dossiers…"
             if recursive
@@ -226,14 +214,8 @@ class MainWindow(QMainWindow):
         )
         self.gallery_view.load_media(folder, recursive)
 
-    def _update_recursive_button(self, recursive: bool) -> None:
-        """Le bouton bascule entre étendre l'affichage et revenir au dossier seul."""
-        self.recursive_button.setText(
-            "Ce dossier seulement" if recursive else "Inclure les sous-dossiers"
-        )
-
     def _on_toggle_recursive(self) -> None:
-        """Bouton de la barre : étend le scan à l'arborescence, ou y renonce."""
+        """Bouton de l'arborescence : étend le scan, ou revient au dossier seul."""
         folder = self.gallery_view.source_root()
         if not folder:
             return

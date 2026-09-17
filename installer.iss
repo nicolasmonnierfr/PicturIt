@@ -7,10 +7,10 @@
 ;
 ; Compilation de l'installeur :
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-;   -> produit installer_output\PicturIt-Setup-1.1.0.exe
+;   -> produit installer_output\PicturIt-Setup-1.2.0.exe
 
 #define MyAppName "PicturIt"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "PicturIt"
 #define MyAppExeName "PicturIt.exe"
 

@@ -24,7 +24,7 @@ ffprobe** (dans `./bin/`). **Zéro persistance disque** (tout en RAM ; seules
   `QCoreApplication.setAttribute(AA_ShareOpenGLContexts)` AVANT `QApplication`**
   (sinon QtWebEngine casse).
 - Build : `pyinstaller build.spec --noconfirm --clean` → `dist/PicturIt/`.
-- Installeur : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.1.0.exe`.
+- Installeur : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.2.0.exe`.
 - Tests : `.\.venv\Scripts\python.exe -m pytest` (dossier `tests/`, sur `core/`,
   sans Qt). Couverture : `-m pytest --cov=core --cov-report=term-missing`.
   ⚠️ `ui/` et `core/thumbnails.py` ne sont **pas** couverts (validation manuelle) ;

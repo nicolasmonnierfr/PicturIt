@@ -167,7 +167,7 @@ installeur avec **Inno Setup** (`installer.iss`) :
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
 
-→ produit `installer_output/PicturIt-Setup-1.1.0.exe` : installation dans
+→ produit `installer_output/PicturIt-Setup-1.2.0.exe` : installation dans
 Program Files (ou par utilisateur, au choix), raccourcis menu Démarrer / Bureau,
 et désinstalleur. Aucune dépendance à installer côté utilisateur final.
 
@@ -205,7 +205,7 @@ sont listées dans [Backlog.txt](Backlog.txt) et l'« Historique des versions »
 
 ## Historique des versions
 
-- **Non publié (depuis 1.1.0)** — **Réactivité** : le scan ne bloque plus
+- **1.2.0** — **Réactivité** : le scan ne bloque plus
   l'interface (un clic sur un disque la figeait plusieurs minutes) ; le clic
   charge le dossier seul, le parcours récursif devient un geste explicite et
   reste interruptible. **Vignettes** : ce qui est à l'écran se charge en
@@ -214,7 +214,9 @@ sont listées dans [Backlog.txt](Backlog.txt) et l'« Historique des versions »
   17,5 % des photos d'un dossier réel s'affichaient à tort comme illisibles
   (JPEG/MPO d'iPhone jugés tronqués). **Diagnostic** : journal optionnel
   (`--log` / `--log-perf`). **Interface** : contrôles vidéo complets, flèches
-  de navigation en plein écran, avertissement sur l'édition destructive.
+  de navigation en plein écran, avertissement sur l'édition destructive,
+  cartes de galerie uniformes, interrupteurs redessinés, filtres type et GPS
+  séparés et étiquetés, nom du dossier en tête de galerie.
 
 - **1.1.0** — Nouvelles fonctionnalités galerie & carte. **Tri** : bouton d'ordre
   croissant/décroissant ; **« Grouper par »** dossier (défaut) / jour / semaine /

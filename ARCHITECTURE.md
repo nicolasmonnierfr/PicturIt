@@ -254,7 +254,7 @@ travail est surtout de l'attente réseau. Réglable par `PICTURIT_THREADS`.
 - **Tests headless** : exécuter un script avec `QT_QPA_PLATFORM=offscreen` ; pour
   la carte/WebEngine, poser `AA_ShareOpenGLContexts` avant `QApplication`.
 - **Build** : `pyinstaller build.spec --noconfirm --clean` → `dist/PicturIt/`.
-- **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.1.0.exe`.
+- **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.2.0.exe`.
 
 ### Tests automatisés (`tests/`)
 

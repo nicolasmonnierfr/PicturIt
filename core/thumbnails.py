@@ -36,6 +36,7 @@ from PySide6.QtGui import (
     QColor,
     QImage,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
     QPolygonF,
@@ -672,24 +673,70 @@ def overlay_border(pixmap: QPixmap, color: QColor, width: int = 6) -> QPixmap:
     return result
 
 
+def _map_pin_path(x: float, y: float, cote: float) -> QPainterPath:
+    """Silhouette d'un marqueur de carte inscrite dans un carré.
+
+    Goutte (disque prolongé d'une pointe vers le bas) évidée en son centre,
+    comme les marqueurs des applications cartographiques.
+    """
+    cx = x + cote / 2
+    cy = y + cote * 0.36
+    rayon = cote * 0.30
+
+    tete = QPainterPath()
+    tete.addEllipse(QPointF(cx, cy), rayon, rayon)
+
+    # Pointe : triangle dont la base épouse le bas du disque.
+    pointe = QPainterPath()
+    pointe.moveTo(cx - rayon * 0.80, cy + rayon * 0.58)
+    pointe.lineTo(cx + rayon * 0.80, cy + rayon * 0.58)
+    pointe.lineTo(cx, y + cote * 0.97)
+    pointe.closeSubpath()
+
+    trou = QPainterPath()
+    trou.addEllipse(QPointF(cx, cy), rayon * 0.44, rayon * 0.44)
+    return tete.united(pointe).subtracted(trou)
+
+
 def overlay_nogps(pixmap: QPixmap) -> QPixmap:
-    """Superpose un badge « sans GPS » en bas à gauche (cf. SPEC 4.2)."""
+    """Superpose un badge « sans GPS » en bas à gauche (cf. SPEC 4.2).
+
+    Un marqueur de carte barré, plutôt qu'un simple rond : le symbole dit de
+    lui-même qu'il est question de localisation, d'après ``resources/nogps.png``.
+
+    Dessiné et non chargé depuis un fichier : la vignette va de 48 à 320 px
+    selon le zoom, et un tracé suit cette échelle sans se pixelliser. Chaque
+    forme est doublée d'un liseré sombre, sans quoi l'ambre se perdrait sur une
+    photo claire.
+    """
     result = QPixmap(pixmap)
     painter = QPainter(result)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    w, h = result.width(), result.height()
-    size = min(w, h)
-    radius = size * 0.12
-    margin = size * 0.06
-    cx, cy = margin + radius, h - margin - radius
-    painter.setPen(QPen(QColor(20, 20, 20), max(1.0, size * 0.01)))
-    painter.setBrush(QColor(235, 145, 30))  # ambre = avertissement « hors carte »
-    painter.drawEllipse(QPointF(cx, cy), radius, radius)
-    # Barre oblique blanche signifiant « pas de localisation ».
-    painter.setPen(QPen(QColor(255, 255, 255), max(2.0, size * 0.022)))
-    painter.drawLine(
-        QPointF(cx - radius * 0.6, cy + radius * 0.6),
-        QPointF(cx + radius * 0.6, cy - radius * 0.6),
-    )
+
+    cote_image = min(result.width(), result.height())
+    cote = cote_image * 0.30
+    marge = cote_image * 0.05
+    x, y = marge, result.height() - marge - cote
+
+    ambre = QColor(235, 145, 30)
+    liseré = QColor(20, 20, 20, 190)
+
+    # Marqueur.
+    chemin = _map_pin_path(x, y, cote)
+    painter.setPen(QPen(liseré, max(1.0, cote * 0.05)))
+    painter.setBrush(ambre)
+    painter.drawPath(chemin)
+
+    # Barre oblique : tracée en deux passes, la sombre débordant de la claire
+    # pour détacher la barre du marqueur qu'elle traverse.
+    debut = QPointF(x + cote * 0.12, y + cote * 0.88)
+    fin = QPointF(x + cote * 0.88, y + cote * 0.12)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    for couleur, epaisseur in ((liseré, cote * 0.19), (ambre, cote * 0.09)):
+        stylo = QPen(couleur, epaisseur)
+        stylo.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(stylo)
+        painter.drawLine(debut, fin)
+
     painter.end()
     return result

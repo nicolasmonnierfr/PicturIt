@@ -714,7 +714,7 @@ def overlay_nogps(pixmap: QPixmap) -> QPixmap:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     cote_image = min(result.width(), result.height())
-    cote = cote_image * 0.30
+    cote = cote_image * 0.21  # 30 % plus petit que la première version
     marge = cote_image * 0.05
     x, y = marge, result.height() - marge - cote
 

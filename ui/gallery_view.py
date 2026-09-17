@@ -351,7 +351,9 @@ class GalleryView(QWidget):
         # Tri / filtre / recherche de la galerie.
         self._sort_key = "name"     # name | date | size
         self._sort_desc = False     # ordre décroissant si True
-        self._filter = "all"        # all | photos | videos | gps | nogps
+        # Deux filtres cumulatifs, chacun avec son menu.
+        self._type_filter = "all"   # all | photos | videos
+        self._gps_filter = "all"    # all | gps | nogps
         self._group_by = "dir"      # dir | day | week | month (regroupement)
         self._search = ""
         # Restriction d'affichage à un sous-ensemble de chemins (clic carte).
@@ -419,15 +421,25 @@ class GalleryView(QWidget):
         self._group_combo.currentIndexChanged.connect(self._on_group_changed)
         toolbar.addWidget(self._group_combo)
 
-        self._filter_combo = QComboBox()
-        self._filter_combo.setToolTip("Filtrer")
-        self._filter_combo.addItem("Tous", "all")
-        self._filter_combo.addItem("Photos", "photos")
-        self._filter_combo.addItem("Vidéos", "videos")
-        self._filter_combo.addItem("Avec GPS", "gps")
-        self._filter_combo.addItem("Sans GPS", "nogps")
-        self._filter_combo.currentIndexChanged.connect(self._on_filter_changed)
-        toolbar.addWidget(self._filter_combo)
+        # Deux filtres indépendants, qui se cumulent : on peut demander les
+        # photos sans GPS, ce qu'un menu unique ne permettait pas d'exprimer.
+        self._type_combo = QComboBox()
+        self._type_combo.setToolTip("Filtrer par type de média")
+        self._type_combo.addItem("Tous", "all")
+        self._type_combo.addItem("Photos", "photos")
+        self._type_combo.addItem("Vidéos", "videos")
+        self._type_combo.currentIndexChanged.connect(self._on_filter_changed)
+        toolbar.addWidget(self._type_combo)
+
+        # Les libellés portent « GPS » : sans cela, deux menus voisins
+        # afficheraient « Tous » et on ne saurait plus lequel filtre quoi.
+        self._gps_combo = QComboBox()
+        self._gps_combo.setToolTip("Filtrer selon la présence de coordonnées GPS")
+        self._gps_combo.addItem("GPS : tous", "all")
+        self._gps_combo.addItem("GPS : avec", "gps")
+        self._gps_combo.addItem("GPS : sans", "nogps")
+        self._gps_combo.currentIndexChanged.connect(self._on_filter_changed)
+        toolbar.addWidget(self._gps_combo)
 
         toolbar.addStretch(1)
 
@@ -658,17 +670,19 @@ class GalleryView(QWidget):
 
     def _reset_filters(self) -> None:
         """Réinitialise tri/ordre/regroupement/filtre/recherche (sans réaffichage)."""
-        self._sort_key, self._filter, self._search = "name", "all", ""
+        self._sort_key, self._search = "name", ""
+        self._type_filter = self._gps_filter = "all"
         self._sort_desc = False
         self._group_by = "dir"
         self._path_filter = None
         self._filter_banner.setVisible(False)
-        widgets = (self._sort_combo, self._filter_combo, self._search_edit,
-                   self._order_button, self._group_combo)
+        widgets = (self._sort_combo, self._type_combo, self._gps_combo,
+                   self._search_edit, self._order_button, self._group_combo)
         for widget in widgets:
             widget.blockSignals(True)
         self._sort_combo.setCurrentIndex(0)
-        self._filter_combo.setCurrentIndex(0)
+        self._type_combo.setCurrentIndex(0)
+        self._gps_combo.setCurrentIndex(0)
         self._group_combo.setCurrentIndex(0)
         self._order_button.setChecked(False)
         self._order_button.setText("▲")
@@ -1322,13 +1336,16 @@ class GalleryView(QWidget):
         if self._path_filter is not None:
             media = [m for m in media if m.path in self._path_filter]
 
-        if self._filter == "photos":
+        # Les deux filtres se combinent : « Photos » + « GPS : sans » ne
+        # laisse que les photos dépourvues de coordonnées.
+        if self._type_filter == "photos":
             media = [m for m in media if not m.is_video]
-        elif self._filter == "videos":
+        elif self._type_filter == "videos":
             media = [m for m in media if m.is_video]
-        elif self._filter == "gps":
+
+        if self._gps_filter == "gps":
             media = [m for m in media if m.path in self._geo]
-        elif self._filter == "nogps":
+        elif self._gps_filter == "nogps":
             media = [m for m in media if m.path not in self._geo]
 
         if self._search:
@@ -1359,7 +1376,9 @@ class GalleryView(QWidget):
         self._refresh_view()
 
     def _on_filter_changed(self, _index: int) -> None:
-        self._filter = self._filter_combo.currentData()
+        """Un des deux menus de filtre a changé : on relit les deux."""
+        self._type_filter = self._type_combo.currentData()
+        self._gps_filter = self._gps_combo.currentData()
         self._refresh_view()
 
     def _on_order_toggled(self, checked: bool) -> None:

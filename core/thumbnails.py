@@ -738,7 +738,7 @@ def overlay_nogps(pixmap: QPixmap) -> QPixmap:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     cote_image = min(result.width(), result.height())
-    cote = cote_image * 0.21  # 30 % plus petit que la première version
+    cote = cote_image * 0.147  # réduit deux fois de 30 % depuis la version initiale
     marge = cote_image * 0.05
     x, y = marge, result.height() - marge - cote
 
@@ -751,16 +751,22 @@ def overlay_nogps(pixmap: QPixmap) -> QPixmap:
     painter.setBrush(ambre)
     painter.drawPath(chemin)
 
-    # Barre oblique : tracée en deux passes, la sombre débordant de la claire
-    # pour détacher la barre du marqueur qu'elle traverse.
-    debut = QPointF(x + cote * 0.12, y + cote * 0.88)
-    fin = QPointF(x + cote * 0.88, y + cote * 0.12)
+    # Croix par-dessus le marqueur, en deux passes : **tous** les liserés
+    # d'abord, sinon celui de la seconde barre recouvrirait l'ambre de la
+    # première à leur croisement.
+    diagonales = (
+        (QPointF(x + cote * 0.12, y + cote * 0.88),
+         QPointF(x + cote * 0.88, y + cote * 0.12)),
+        (QPointF(x + cote * 0.12, y + cote * 0.12),
+         QPointF(x + cote * 0.88, y + cote * 0.88)),
+    )
     painter.setBrush(Qt.BrushStyle.NoBrush)
     for couleur, epaisseur in ((liseré, cote * 0.19), (ambre, cote * 0.09)):
         stylo = QPen(couleur, epaisseur)
         stylo.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(stylo)
-        painter.drawLine(debut, fin)
+        for debut, fin in diagonales:
+            painter.drawLine(debut, fin)
 
     painter.end()
     return result

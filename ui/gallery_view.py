@@ -431,7 +431,7 @@ class GalleryView(QWidget):
 
         toolbar.addStretch(1)
 
-        # Taille des vignettes : regroupée dans un bouton à menu (gain de place).
+        # Zoom (taille des vignettes) : regroupé dans un bouton à menu.
         self._size_slider = QSlider(Qt.Orientation.Horizontal)
         self._size_slider.setMinimum(48)  # vignettes très petites (cf. backlog)
         self._size_slider.setMaximum(320)
@@ -443,14 +443,14 @@ class GalleryView(QWidget):
         size_holder = QWidget()
         size_layout = QHBoxLayout(size_holder)
         size_layout.setContentsMargins(8, 4, 8, 4)
-        size_layout.addWidget(QLabel("Taille :"))
+        size_layout.addWidget(QLabel("Zoom :"))
         size_layout.addWidget(self._size_slider)
         size_action = QWidgetAction(size_menu)
         size_action.setDefaultWidget(size_holder)
         size_menu.addAction(size_action)
         self._size_button = QToolButton()
-        self._size_button.setText("Taille ▾")
-        self._size_button.setToolTip("Taille des vignettes")
+        self._size_button.setText("Zoom ▾")
+        self._size_button.setToolTip("Zoom : taille des vignettes")
         self._size_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._size_button.setMenu(size_menu)
         toolbar.addWidget(self._size_button)

@@ -80,6 +80,18 @@ _MONTHS_FR = (
 _NO_DATE_LABEL = "Sans date"
 
 
+def _filter_label(texte: str) -> QLabel:
+    """Libellé posé devant un menu de la barre d'outils.
+
+    Nommer chaque menu vaut mieux que de compter sur les infobulles : la
+    barre en aligne quatre, et « Tous » ou « Dossier » seuls ne disent pas
+    sur quel critère ils portent.
+    """
+    label = QLabel(texte)
+    label.setStyleSheet("color:#b9b9b9;")
+    return label
+
+
 def _human_size(num: int) -> str:
     """Formate une taille en octets de façon lisible."""
     value = float(num)
@@ -394,6 +406,7 @@ class GalleryView(QWidget):
         self._search_edit.textChanged.connect(self._on_search_changed)
         toolbar.addWidget(self._search_edit)
 
+        toolbar.addWidget(_filter_label("Tri :"))
         self._sort_combo = QComboBox()
         self._sort_combo.setToolTip("Trier par")
         self._sort_combo.addItem("Nom", "name")
@@ -412,6 +425,7 @@ class GalleryView(QWidget):
         toolbar.addWidget(self._order_button)
 
         # Regroupement des sections : par dossier (défaut) ou par date.
+        toolbar.addWidget(_filter_label("Groupe :"))
         self._group_combo = QComboBox()
         self._group_combo.setToolTip("Grouper par")
         self._group_combo.addItem("Dossier", "dir")
@@ -423,6 +437,7 @@ class GalleryView(QWidget):
 
         # Deux filtres indépendants, qui se cumulent : on peut demander les
         # photos sans GPS, ce qu'un menu unique ne permettait pas d'exprimer.
+        toolbar.addWidget(_filter_label("Type :"))
         self._type_combo = QComboBox()
         self._type_combo.setToolTip("Filtrer par type de média")
         self._type_combo.addItem("Tous", "all")
@@ -431,13 +446,12 @@ class GalleryView(QWidget):
         self._type_combo.currentIndexChanged.connect(self._on_filter_changed)
         toolbar.addWidget(self._type_combo)
 
-        # Les libellés portent « GPS » : sans cela, deux menus voisins
-        # afficheraient « Tous » et on ne saurait plus lequel filtre quoi.
+        toolbar.addWidget(_filter_label("GPS :"))
         self._gps_combo = QComboBox()
         self._gps_combo.setToolTip("Filtrer selon la présence de coordonnées GPS")
-        self._gps_combo.addItem("GPS : tous", "all")
-        self._gps_combo.addItem("GPS : avec", "gps")
-        self._gps_combo.addItem("GPS : sans", "nogps")
+        self._gps_combo.addItem("Tous", "all")
+        self._gps_combo.addItem("Avec", "gps")
+        self._gps_combo.addItem("Sans", "nogps")
         self._gps_combo.currentIndexChanged.connect(self._on_filter_changed)
         toolbar.addWidget(self._gps_combo)
 

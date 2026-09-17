@@ -52,6 +52,9 @@ class MainWindow(QMainWindow):
         self.operations = OperationManager()
         # Mode « copier » : source -> copie de travail cumulative (_copie).
         self._edit_working: dict[str, str] = {}
+        # Avertissement du mode « Remplacer » : montré une seule fois par
+        # session (rien n'est persisté sur disque, cf. SPEC 2).
+        self._replace_warned = False
         # Plein écran : héberge le PreviewPanel existant (boutons déjà câblés).
         self._fullscreen = FullScreenViewer()
         self._fullscreen.nav.connect(self._on_fullscreen_nav)
@@ -291,12 +294,51 @@ class MainWindow(QMainWindow):
         """Navigation ←/→ en plein écran : change la sélection (et donc l'aperçu)."""
         self.gallery_view.select_relative(delta)
 
+    def _confirm_rotate_in_place(self, paths: list[str]) -> bool:
+        """Confirme la rotation **seulement quand elle dégrade** les fichiers.
+
+        La rotation JPEG ne touche pas aux pixels : elle réécrit le tag EXIF
+        Orientation, donc elle est sans perte et s'annule en pivotant dans
+        l'autre sens. Demander confirmation dans ce cas ne ferait qu'habituer
+        l'utilisateur à cliquer « Oui » sans lire.
+
+        Les autres formats (PNG, BMP…) sont ré-encodés pixel par pixel : là, la
+        perte est réelle et définitive.
+        """
+        reencodes = [
+            p for p in paths
+            if os.path.splitext(p)[1].lower() not in editing.JPEG_EXTENSIONS
+        ]
+        if not reencodes:
+            return True
+
+        reply = QMessageBox.warning(
+            self,
+            "Pivoter en place",
+            f"{len(reencodes)} fichier(s) sur {len(paths)} ne sont pas des JPEG "
+            "et seront ré-encodés : la rotation dégrade l'image et n'est pas "
+            "annulable (Ctrl+Z ne couvre pas les éditions).\n\n"
+            "Les JPEG, eux, pivotent sans perte.\n\n"
+            "Continuer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
+
     def _on_rotate_selection(self, clockwise: bool) -> None:
-        """Pivote les photos sélectionnées depuis la galerie (en place)."""
+        """Pivote les photos sélectionnées depuis la galerie, **en place**.
+
+        Ce chemin ne passe pas par le switch Remplacer/Copier de l'aperçu : il
+        écrit toujours sur les fichiers d'origine. Il peut en toucher beaucoup
+        d'un coup, d'où une confirmation propre, indépendante de celle du mode
+        Remplacer.
+        """
         paths = [p for p in self.gallery_view.selected_paths()
                  if not scanner.is_video(p)]
         if not paths:
             self.statusBar().showMessage("Aucune photo à pivoter.", 4000)
+            return
+        if not self._confirm_rotate_in_place(paths):
             return
         done = 0
         for path in paths:
@@ -374,6 +416,35 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message, 6000)
 
     # --- Édition photo (rotation / recadrage / conversion) ---
+    def _confirm_replace_mode(self) -> bool:
+        """Prévient, **une fois par session**, que le mode Remplacer est définitif.
+
+        L'édition n'est pas couverte par Ctrl+Z (seuls move/copy/rename le sont)
+        et aucune sauvegarde de l'original n'est faite : un recadrage ou une
+        conversion écrase le fichier pour de bon.
+
+        Une seule fois : redemander à chaque rotation rendrait l'outil pénible,
+        et l'indicateur ambre du switch reste visible en permanence.
+        """
+        if self._replace_warned:
+            return True
+        reply = QMessageBox.warning(
+            self,
+            "Modifier le fichier d'origine",
+            "Le mode « Remplacer » écrit directement sur vos fichiers.\n\n"
+            "Ctrl+Z n'annule pas les éditions et aucune copie de l'original "
+            "n'est conservée : un recadrage ou une conversion est définitif.\n\n"
+            "Passez sur « Copier » pour travailler sur une copie.\n\n"
+            "Continuer en mode Remplacer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return False
+        # Averti pour cette session : l'utilisateur sait désormais à quoi s'en tenir.
+        self._replace_warned = True
+        return True
+
     def _edit_target(self, src: str) -> str | None:
         """Renvoie le fichier à éditer selon le mode (remplacer/copier).
 
@@ -381,7 +452,7 @@ class MainWindow(QMainWindow):
         laquelle s'accumulent les éditions, et l'ajoute à la galerie.
         """
         if self.preview_panel.edit_mode() == "replace":
-            return src
+            return src if self._confirm_replace_mode() else None
         # Le fichier courant est déjà une copie de travail : éditer en place
         # (les opérations s'accumulent sur la même copie _copie).
         if src in self._edit_working.values():

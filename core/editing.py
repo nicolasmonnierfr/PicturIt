@@ -28,7 +28,10 @@ CONVERT_FORMATS = {
     ".bmp": "BMP",
 }
 
-_JPEG_EXT = (".jpg", ".jpeg")
+# Formats dont la rotation est **sans perte** (tag EXIF Orientation, aucun
+# re-encodage) : l'interface s'en sert pour n'avertir qu'a bon escient.
+JPEG_EXTENSIONS = (".jpg", ".jpeg")
+_JPEG_EXT = JPEG_EXTENSIONS
 
 # Transitions du tag EXIF Orientation pour une rotation de 90° (1..8).
 _ROTATE_CW = {1: 6, 2: 7, 3: 8, 4: 5, 5: 2, 6: 3, 7: 4, 8: 1}

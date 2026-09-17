@@ -9,8 +9,6 @@ Fonctionnalités :
 - [ ] Diaporama (défilement auto toutes les N secondes)
 
 UX / Accessibilité — P2 (importantes) :
-- [ ] Édition « Remplacer » : avertissement (destructif, non annulable) ou
-      indicateur de mode plus visible
 - [ ] Afficher la valeur du curseur de taille des vignettes (ex. « 160 px »)
 - [ ] Barre de progression pour l'analyse des doublons
 
@@ -62,6 +60,10 @@ Hors périmètre v1 (SPEC) :
 ## LIVRÉ
 -------------------------------------------------------------------------------
 Interface (séance 4) :
+- [x] Édition « Remplacer » : côté du switch en ambre + avertissement une fois
+      par session avant la première écriture destructive. Couvre aussi la
+      rotation depuis la galerie, qui écrit en place en ignorant le switch, et
+      n'avertit que s'il y a ré-encodage (la rotation JPEG est sans perte).
 - [x] Bouton « Inclure les sous-dossiers » déplacé au-dessus de l'arborescence,
       là où se fait le choix du dossier.
 - [x] Lecteur vidéo : contrôles classiques (⏮ ⏪ ▶/⏸ ⏩ ⏹), barre de progression

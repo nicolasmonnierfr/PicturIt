@@ -322,9 +322,13 @@ class PreviewPanel(QWidget):
         bar.addStretch(1)
 
         # Mini-slider Remplacer / Copier (au lieu d'un bouton switch).
-        self._mode_switch = ToggleSlider("Remplacer", "Copier")
+        # « Remplacer » écrase l'original sans retour possible : le côté est
+        # signalé en ambre pour qu'on sache toujours dans quel mode on édite.
+        self._mode_switch = ToggleSlider("Remplacer", "Copier", warning_side="left")
         self._mode_switch.setToolTip(
-            "Remplacer : modifie le fichier. Copier : applique sur une copie _copie."
+            "Remplacer : écrit sur le fichier d'origine — irréversible, "
+            "Ctrl+Z ne rattrape pas une édition.\n"
+            "Copier : applique les modifications sur une copie « _copie »."
         )
         bar.addWidget(self._mode_switch)
 

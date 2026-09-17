@@ -16,18 +16,32 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# Ambre d'avertissement, identique au badge « sans GPS » de la galerie.
+_WARNING_STYLE = "color:#eb911e; font-weight:bold;"
+
 
 class ToggleSlider(QWidget):
     """Bascule compacte à deux états : [gauche] (•—) [droite].
 
     API compatible avec un bouton checkable : isChecked()/setChecked()/toggled.
     Coché (True) = position droite.
+
+    *warning_side* (``"left"`` ou ``"right"``) signale un état à conséquence :
+    ce côté s'affiche en ambre quand il est actif. Utilisé pour le mode
+    « Remplacer », qui écrit sur le fichier d'origine sans retour possible.
     """
 
     toggled = Signal(bool)
 
-    def __init__(self, left: str, right: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        left: str,
+        right: str,
+        parent: QWidget | None = None,
+        warning_side: str | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._warning_side = warning_side
         self._left = QLabel(left)
         self._right = QLabel(right)
 
@@ -57,10 +71,18 @@ class ToggleSlider(QWidget):
         self.toggled.emit(value == 1)
 
     def _update_emphasis(self) -> None:
-        """Met en gras le libellé du côté actif (repère visuel clair)."""
+        """Met en valeur le libellé du côté actif, en ambre s'il est à risque."""
         right_active = self.isChecked()
-        self._left.setStyleSheet("" if right_active else "font-weight:bold;")
-        self._right.setStyleSheet("font-weight:bold;" if right_active else "")
+        for cote, label, actif in (
+            ("left", self._left, not right_active),
+            ("right", self._right, right_active),
+        ):
+            if not actif:
+                label.setStyleSheet("")
+            elif cote == self._warning_side:
+                label.setStyleSheet(_WARNING_STYLE)
+            else:
+                label.setStyleSheet("font-weight:bold;")
 
 
 def make_crop_icon(size: int = 20, color: QColor | None = None) -> QIcon:

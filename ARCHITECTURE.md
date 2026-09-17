@@ -161,6 +161,13 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
    catégorie ne fait que re-filtrer (`_base_media` via `DupIndex.color_of`).
 7. **Édition « Remplacer »** est destructive et **non annulable** (pas de
    sauvegarde de l'original). Le mode « Copier » accumule sur un seul `_copie`.
+   Trois garde-fous : le côté « Remplacer » du switch s'affiche en **ambre**,
+   `_confirm_replace_mode()` prévient **une fois par session** avant la
+   première écriture, et `_confirm_rotate_in_place()` couvre le menu
+   contextuel de la galerie — qui écrit toujours en place et **ignore le
+   switch**. Cette confirmation-là ne se déclenche que s'il y a vraiment
+   ré-encodage : la rotation JPEG est sans perte, avertir à chaque fois
+   habituerait l'utilisateur à cliquer « Oui » sans lire.
 8. **ffmpeg/ffprobe** : si absents, vignette vidéo générique + métadonnées vidéo
    vides, **sans planter** (`fftools` renvoie None). Présents dans `./bin/`.
 9. **Packaging** : `build.spec` **retire** DevTools Chromium, traductions Qt,

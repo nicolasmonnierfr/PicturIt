@@ -7,7 +7,8 @@ Affiche les photos/vidéos du dossier source, regroupées par sous-dossier
 - sélection simple / Ctrl (multiple) / Shift (plage) ;
 - **glisser-déposer** des fichiers vers une cible (accès rapide ou arborescence) ;
 - mises à jour **incrémentales** après une opération de tri (cf. SPEC 4.5) ;
-- un switch « Afficher doublons / similaires » (logique = incrément 7).
+- un switch « Afficher doublons / similaires » (logique = incrément 7) ;
+- en tête de panneau, le nom du dossier en cours.
 
 Implémentation des sections : un ``QListView`` (mode icônes) par sous-dossier,
 empilés dans une zone défilante, chacun s'ajustant en hauteur à son contenu.
@@ -368,6 +369,17 @@ class GalleryView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
+        # --- Titre : dossier en cours, bien visible au-dessus des filtres ---
+        # Le chemin complet reste dans la barre supérieure ; ici seul le nom du
+        # dossier, pour savoir d'un coup d'œil ce qu'on est en train de trier.
+        self._folder_label = QLabel()
+        self._folder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._folder_label.setStyleSheet(
+            "font-size:17px; font-weight:bold; padding:2px 4px 6px 4px;"
+        )
+        self._folder_label.setVisible(False)  # rien à annoncer au démarrage
+        layout.addWidget(self._folder_label)
+
         # --- Barre d'outils de la galerie (compacte : libellés en infobulles) ---
         toolbar = QHBoxLayout()
         toolbar.setSpacing(6)
@@ -538,10 +550,25 @@ class GalleryView(QWidget):
             switch.blockSignals(False)
         self._source_root = source_dir
         self._recursive = recursive
+        self._set_folder_title(source_dir)
         self._media_by_path = {}
         self._date_cache.clear()
         self._reset_filters()
         self._start_scan(source_dir, recursive)
+
+    def _set_folder_title(self, source_dir: str) -> None:
+        """Affiche le nom du dossier en cours au-dessus de la galerie.
+
+        Une racine de disque n'a pas de nom de base : ``os.path.basename`` y
+        renvoie une chaîne vide. On retombe alors sur le chemin lui-même.
+        """
+        if not source_dir:
+            self._folder_label.setVisible(False)
+            return
+        nom = os.path.basename(os.path.normpath(source_dir)) or source_dir
+        self._folder_label.setText(nom)
+        self._folder_label.setToolTip(source_dir)
+        self._folder_label.setVisible(True)
 
     # --- Scan en arrière-plan (SPEC 5.3 : ne jamais figer l'UI) ---
     def _start_scan(self, source_dir: str, recursive: bool) -> None:

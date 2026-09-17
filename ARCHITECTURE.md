@@ -36,6 +36,7 @@ en RAM, sauf les opérations de tri/édition explicites et l'export manuel du lo
 | `operations.py` | move/copy/trash + undo + log | `OperationManager` ; renvoie `[FileChange(kind, src, dst)]` ; `rename`, `log_edit`, `export_log` |
 | `editing.py` | Rotation/recadrage/conversion | rotation JPEG **lossless** (tag EXIF Orientation) ; crop/convert via Pillow ; **écrit sur disque** |
 | `logs.py` | Journal de diagnostic | **débrayé par défaut** (`--log`/`--log-perf`/`PICTURIT_LOG`) → `%LOCALAPPDATA%\PicturIt\picturit.log` rotatif ; seule écriture disque hors tri/édition |
+| `imaging.py` | Configuration Pillow commune | HEIC/HEIF + `LOAD_TRUNCATED_IMAGES` (17,5 % des photos d'un dossier réel étaient rejetées à tort) |
 | `perf.py` | Mesures de performance | `step` (ponctuel, tracé) / `measure` (répété, **agrégé**) / `report` ; actif seulement en niveau DEBUG |
 
 ## 3. Modules `ui/`
@@ -188,6 +189,38 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
     dossier/taille). Si une édition disque n'est pas reflétée, regarder là.
 
 ---
+
+### Chargement des vignettes (chemin le plus sensible aux perfs)
+
+Trois mécanismes, tous motivés par des mesures sur un **partage réseau** (où
+lire une photo coûte ~800 ms, contre ~30 ms en local) :
+
+1. **File d'attente maison** (`ThumbnailManager._heap` / `_waiting`). On ne
+   déverse pas tout dans `QThreadPool` : une tâche confiée à Qt a sa priorité
+   figée et le défilement ne pourrait plus la faire remonter. Le pool ne reçoit
+   que `_max_inflight` tâches, donc chaque créneau libéré va au média le plus
+   utile *à cet instant*. Ordre : photo visible > vidéo visible > photo > vidéo.
+2. **Repriorisation au défilement** : `gallery._visible_paths()` calcule par
+   arithmétique (pas widget par widget) ce qui est à l'écran, et
+   `ThumbnailManager.prioritize()` remonte ces entrées. Rien n'est abandonné —
+   la carte et les statistiques ont besoin de **tous** les médias.
+3. **Une seule lecture par photo**. Deux chemins possibles :
+   - vignette EXIF embarquée (9 Ko au lieu de plusieurs Mo) quand elle existe ;
+   - sinon décodage complet, avec `collect_metadata=True` qui récolte
+     dimensions/date/GPS pendant l'ouverture déjà faite.
+
+   ⚠️ `_HeaderStrategy` décide **par dossier** s'il faut tenter l'en-tête :
+   le pari rapporte ~480 ms quand la vignette est là, coûte ~340 ms sinon, donc
+   il n'est rentable qu'au-delà de ~40 % de réussite (mesuré : 100 % sur des
+   photos d'iPhone, 11 % sur des photos re-compressées). Ne pas le rendre
+   systématique : c'est une régression que les mesures ont déjà démasquée.
+
+⚠️ `collect_metadata` lit `img.size` et `img.getexif()` **avant** `draft()` et
+`exif_transpose()` : le premier change `size` (décodage à échelle réduite), le
+second consomme l'EXIF d'orientation.
+
+Nombre de threads : `_pool_threads()` = 2 × cœurs (plafonné à 32), car le
+travail est surtout de l'attente réseau. Réglable par `PICTURIT_THREADS`.
 
 ## 7. Conventions
 - Commentaires/identifiants UI **en français**.

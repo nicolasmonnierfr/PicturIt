@@ -36,9 +36,10 @@ ignore = [
 # main.py doit poser AA_ShareOpenGLContexts AVANT d'importer ui/ : l'import
 # tardif est structurel, pas un oubli.
 "main.py" = ["E402"]
-# Les tests accèdent volontairement aux fonctions privées des modules testés
-# et utilisent assert (c'est leur raison d'être).
-"tests/*" = ["S101", "SLF001"]
+# Les tests accèdent volontairement aux fonctions privées des modules testés,
+# utilisent assert (c'est leur raison d'être) et tirent des nombres au hasard
+# pour simuler des jeux de données (S311 ne vise que la cryptographie).
+"tests/*" = ["S101", "SLF001", "S311"]
 # Le pont QWebChannel expose ses signaux et ses slots au JavaScript : leurs
 # noms camelCase font partie du contrat avec map.html, on ne peut pas les
 # renommer en snake_case.

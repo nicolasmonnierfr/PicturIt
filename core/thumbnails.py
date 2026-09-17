@@ -16,6 +16,7 @@ import heapq
 import io
 import itertools
 import os
+import threading
 from dataclasses import dataclass
 
 import piexif
@@ -49,11 +50,35 @@ _ = imaging.HEIF_SUPPORTED
 THUMB_SIZE = 160
 
 
-def load_qimage(path: str, max_side: int | None = None) -> QImage | None:
+def _pool_threads() -> int:
+    """Nombre de threads de génération des vignettes.
+
+    Le travail est surtout de l'**attente** : lire un fichier sur un partage
+    réseau prend des centaines de millisecondes pendant lesquelles le thread
+    ne fait rien. Un thread par cœur laisse donc le pool à moitié inoccupé
+    (parallélisme effectif mesuré à 7,8 pour 16 threads) ; en doubler le
+    nombre masque cette latence.
+
+    Réglable par ``PICTURIT_THREADS`` pour les configurations atypiques
+    (disque lent, machine peu puissante).
+    """
+    brut = os.environ.get("PICTURIT_THREADS", "")
+    if brut.isdigit() and int(brut) > 0:
+        return min(64, int(brut))
+    return max(8, min(32, (os.cpu_count() or 4) * 2))
+
+
+def load_qimage(
+    path: str, max_side: int | None = None, collect_metadata: bool = False
+) -> QImage | None:
     """Charge une image via Pillow et la renvoie en ``QImage``.
 
     Passe par Pillow pour gérer HEIC, l'orientation EXIF et les formats
     exotiques. Renvoie None si le fichier est illisible/corrompu.
+
+    *collect_metadata* : enregistre au passage dimensions, date et GPS dans le
+    cache de ``core.metadata``. Le fichier est de toute façon ouvert ici :
+    autant éviter à l'appelant de le rouvrir juste pour son EXIF.
 
     Perf : quand on ne veut qu'une vignette (*max_side* fixé), ``Image.draft``
     laisse le décodeur JPEG décoder à échelle réduite (1/2, 1/4, 1/8…) — gain
@@ -62,6 +87,17 @@ def load_qimage(path: str, max_side: int | None = None) -> QImage | None:
     """
     try:
         with perf.measure("image: decodage PIL"), Image.open(path) as img:
+            if collect_metadata:
+                # À lire AVANT toute transformation : ``draft`` change ``size``
+                # (il décode à échelle réduite) et ``exif_transpose`` produit une
+                # image dont l'EXIF d'orientation a été consommé.
+                dimensions = img.size
+                try:
+                    exif = img.getexif()
+                except Exception:  # noqa: BLE001 — EXIF absent ou illisible
+                    exif = None
+                metadata.store_photo(path, dimensions[0], dimensions[1], exif)
+
             # Décodage à échelle réduite si on ne produit qu'une vignette
             # (sans effet sur les formats qui ne gèrent pas draft, ex. PNG/HEIC).
             if max_side is not None:
@@ -135,41 +171,58 @@ class _HeaderStrategy:
     d'environ 40 % de réussite. Or cela dépend entièrement du dossier : 100 %
     sur des photos d'iPhone, 11 % sur des photos re-compressées.
 
-    D'où cet apprentissage par dossier : on essaie sur les premiers fichiers,
-    puis on s'en tient au constat. Remis à zéro à chaque changement de dossier.
+    D'où cet apprentissage par dossier : on observe les premiers fichiers, puis
+    on **fige** la décision. Remis à zéro à chaque changement de dossier.
 
-    Les compteurs sont lus et écrits depuis plusieurs workers sans verrou :
-    une statistique approximative suffit ici, et un verrou sur un chemin aussi
-    chaud coûterait plus cher que l'imprécision qu'il éviterait.
+    Deux écueils, tous deux constatés en mesure avant d'être corrigés :
+
+    - **la décision doit être figée.** Tant qu'on la recalculait à partir du
+      ratio cumulé, un dossier hétérogène (des sous-dossiers d'iPhone et
+      d'autres de photos re-compressées) le faisait osciller autour du seuil et
+      réactivait sans cesse la lecture : 585 lectures d'en-tête observées sur
+      589 photos, alors que la stratégie avait « abandonné » dès la 24ᵉ ;
+    - **les compteurs ont besoin d'un verrou.** Avec 32 workers, les
+      incrémentations concurrentes se perdaient et faussaient la statistique.
+      Le coût d'un verrou (de l'ordre de la microseconde) est sans commune
+      mesure avec la lecture qu'il arbitre (des centaines de millisecondes).
     """
 
     _ECHANTILLON = 24      # essais avant de trancher
     _SEUIL_RENTABLE = 0.40  # taux de vignettes au-delà duquel le pari paie
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._hits = 0
         self._total = 0
+        self._decision: bool | None = None  # None = phase d'observation
 
     def reset(self) -> None:
-        self._hits = 0
-        self._total = 0
+        with self._lock:
+            self._hits = 0
+            self._total = 0
+            self._decision = None
 
     def should_try(self) -> bool:
-        if self._total < self._ECHANTILLON:
-            return True  # phase d'observation
-        return (self._hits / self._total) >= self._SEUIL_RENTABLE
+        with self._lock:
+            return True if self._decision is None else self._decision
 
     def record(self, found: bool) -> None:
-        self._total += 1
-        if found:
-            self._hits += 1
-        if self._total == self._ECHANTILLON:
+        with self._lock:
+            if self._decision is not None:
+                return  # décision déjà prise : ne plus la remettre en cause
+            self._total += 1
+            if found:
+                self._hits += 1
+            if self._total < self._ECHANTILLON:
+                return
             taux = self._hits / self._total
-            logs.get_logger("image").debug(
-                "vignettes EXIF : %d/%d (%.0f %%) → lecture d'en-tête %s",
-                self._hits, self._total, taux * 100,
-                "conservée" if taux >= self._SEUIL_RENTABLE else "abandonnée",
-            )
+            self._decision = taux >= self._SEUIL_RENTABLE
+            hits, total, decision = self._hits, self._total, self._decision
+        logs.get_logger("image").debug(
+            "vignettes EXIF : %d/%d (%.0f %%) → lecture d'en-tête %s",
+            hits, total, taux * 100,
+            "conservée" if decision else "abandonnée",
+        )
 
 
 HEADER_STRATEGY = _HeaderStrategy()
@@ -306,7 +359,9 @@ class _ThumbnailWorker(QRunnable):
                 HEADER_STRATEGY.record(qimg is not None)
                 meta = metadata.read_from_header(self._path, header)
             if qimg is None:
-                qimg = load_qimage(self._path, self._size)
+                # Le décodage ouvre le fichier : on en profite pour récolter
+                # les métadonnées plutôt que de le rouvrir ensuite.
+                qimg = load_qimage(self._path, self._size, collect_metadata=True)
             if qimg is None and _has_content(self._path):
                 # Des fichiers portent une extension photo tout en contenant
                 # une vidéo (Live Photos iPhone, conteneurs QuickTime renommés
@@ -352,6 +407,7 @@ class ThumbnailManager(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._pool = QThreadPool.globalInstance()
+        self._pool.setMaxThreadCount(_pool_threads())
         self._cache: dict[str, QPixmap] = {}             # vignette brute (sans overlay)
         self._gps: dict[str, bool] = {}                  # présence GPS connue
         self._coords: dict[str, tuple[float, float]] = {}  # (lat, lon) si GPS

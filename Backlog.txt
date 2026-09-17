@@ -61,6 +61,17 @@ Hors périmètre v1 (SPEC) :
 
 ## LIVRÉ
 -------------------------------------------------------------------------------
+Performance sur partage réseau (séance 4) :
+- [x] Scan asynchrone annulable ; clic = dossier seul, récursif sur geste.
+- [x] Journal de diagnostic débrayable (--log/--log-perf) + mesures.
+- [x] 27 photos sur 33 récupérées (MPO iPhone tronqués, vidéos déguisées).
+- [x] Vignette EXIF embarquée, avec stratégie adaptative par dossier.
+- [x] Vignettes de la carte mémoïsées : gel UI 3,8 s -> 0,3 s.
+- [x] File prioritaire : ce qui est à l'écran passe devant ; vidéos en dernier.
+- [x] Molette rendue à la zone défilante (elle était absorbée par les vignettes).
+- [x] Une seule ouverture de fichier par photo (métadonnées récoltées au vol).
+- [x] Pool de threads dimensionné pour l'attente réseau (2x cœurs, max 32).
+
 Professionnalisation (séance 3) :
 - [x] Publication sur GitHub (dépôt public nicolasmonnierfr/PicturIt), tags
       v1.0.0 / v1.0.1 / v1.1.0 et Release v1.1.0 avec l'installeur en asset.

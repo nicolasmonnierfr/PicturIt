@@ -216,6 +216,80 @@ class TestCache:
         metadata.invalidate(str(tmp_path / "jamais_lu.jpg"))
 
 
+class TestLectureDepuisEnTete:
+    """``read_from_header`` : métadonnées sans rouvrir le fichier.
+
+    Chemin critique : le worker de vignettes lit les premiers octets une seule
+    fois et en tire à la fois la vignette et les métadonnées. Le résultat doit
+    être **identique** à une lecture complète, sans quoi dates, GPS et carte
+    divergeraient silencieusement.
+    """
+
+    @staticmethod
+    def _entete(path: str, taille: int = 64 * 1024) -> bytes:
+        with open(path, "rb") as fh:
+            return fh.read(taille)
+
+    def test_identique_a_la_lecture_complete(self, tmp_path):
+        path = write_photo(tmp_path / "ref.jpg", dt=_DATE, gps=_GPS, size=(80, 60))
+        complet = metadata.read(path)
+        metadata.clear_cache()
+        partiel = metadata.read_from_header(path, self._entete(path))
+
+        assert partiel is not None
+        assert (partiel.width, partiel.height) == (complet.width, complet.height)
+        assert partiel.datetime_original == complet.datetime_original
+        assert partiel.latitude == pytest.approx(complet.latitude)
+        assert partiel.longitude == pytest.approx(complet.longitude)
+        assert partiel.size == complet.size
+
+    def test_photo_sans_exif(self, tmp_path):
+        """Une photo nue reste exploitable : seules les dimensions sont lues."""
+        path = write_photo(tmp_path / "nue.jpg", size=(64, 48))
+        meta = metadata.read_from_header(path, self._entete(path))
+        assert meta is not None
+        assert (meta.width, meta.height) == (64, 48)
+        assert meta.datetime_original is None
+
+    def test_resultat_mis_en_cache(self, tmp_path):
+        """Le cache partagé est alimenté : l'aperçu et le tri en profitent."""
+        path = write_photo(tmp_path / "cache.jpg", dt=_DATE)
+        depuis_entete = metadata.read_from_header(path, self._entete(path))
+        assert metadata.read(path) is depuis_entete
+
+    def test_cache_prioritaire(self, tmp_path):
+        """Si le fichier est déjà en cache, l'en-tête n'est pas re-analysé."""
+        path = write_photo(tmp_path / "deja.jpg", dt=_DATE)
+        premier = metadata.read(path)
+        assert metadata.read_from_header(path, b"octets sans rapport") is premier
+
+    def test_entete_inexploitable(self, tmp_path):
+        """En-tête tronqué ou illisible : None, pour que l'appelant relise."""
+        path = write_photo(tmp_path / "photo.jpg", dt=_DATE)
+        assert metadata.read_from_header(path, b"pas une image") is None
+
+    def test_entete_vide(self, tmp_path):
+        path = write_photo(tmp_path / "photo.jpg")
+        assert metadata.read_from_header(path, b"") is None
+
+    def test_fichier_inexistant(self, tmp_path):
+        assert metadata.read_from_header(str(tmp_path / "absent.jpg"), b"x") is None
+
+    def test_exif_etendu_present(self, tmp_path):
+        """L'EXIF étendu est en tête de fichier : il doit survivre à la troncature."""
+        path = write_photo(tmp_path / "reflex.jpg", dt=_DATE)
+        exif = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+        exif["0th"][piexif.ImageIFD.Make] = "Canon"
+        exif["0th"][piexif.ImageIFD.Model] = "EOS R6"
+        exif["Exif"][piexif.ExifIFD.ISOSpeedRatings] = 800
+        piexif.insert(piexif.dump(exif), path)
+
+        meta = metadata.read_from_header(path, self._entete(path))
+        assert meta is not None
+        assert meta.camera == "Canon EOS R6"
+        assert meta.iso == 800
+
+
 class TestFormatsDeDate:
     """Parsing des dates EXIF et conteneur."""
 

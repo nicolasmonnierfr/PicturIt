@@ -9,6 +9,7 @@ remontée à l'appelant (beaucoup de fichiers n'ont ni date ni GPS).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import threading
@@ -17,15 +18,10 @@ from datetime import datetime
 
 from PIL import Image
 
-from core import fftools, geo, scanner
+from core import fftools, geo, imaging, perf, scanner
 
-# Enregistre le décodeur HEIC/HEIF pour la lecture EXIF des photos HEIC.
-try:
-    from pillow_heif import register_heif_opener
-
-    register_heif_opener()
-except Exception:  # noqa: BLE001
-    pass
+# Configure Pillow (HEIC + images tronquées) : voir core/imaging.py.
+_ = imaging.HEIF_SUPPORTED
 
 # Identifiants de sous-IFD / tags EXIF utilisés (valeurs standard).
 _EXIF_IFD = 0x8769
@@ -101,11 +97,43 @@ def read(path: str) -> Metadata:
 
     is_video = scanner.is_video(path)
     size = key[2] if key is not None else 0
-    meta = _read_video(path, size) if is_video else _read_photo(path, size)
+    with perf.measure(
+        "metadonnees: ffprobe (video)" if is_video else "metadonnees: EXIF (photo)"
+    ):
+        meta = _read_video(path, size) if is_video else _read_photo(path, size)
 
     if key is not None:
         with _cache_lock:
             _cache[key] = meta
+    return meta
+
+
+def read_from_header(path: str, header: bytes) -> Metadata | None:
+    """Lit les métadonnées d'une photo depuis un en-tête **déjà chargé**.
+
+    Évite une ouverture de fichier supplémentaire : l'appelant (le worker de
+    vignettes) a de toute façon besoin de ces mêmes octets pour récupérer la
+    vignette EXIF. Le résultat alimente le cache partagé, donc l'aperçu, le tri
+    par date et la détection de doublons en profitent aussi.
+
+    Renvoie None si l'en-tête ne suffit pas (l'appelant refait alors un
+    ``read()`` classique). Le critère est la lecture des **dimensions** : Pillow
+    les trouve dans les tout premiers octets de n'importe quel format, donc leur
+    absence signale un en-tête inexploitable.
+    """
+    key = _cache_key(path)
+    if key is None:
+        return None
+    with _cache_lock:
+        hit = _cache.get(key)
+    if hit is not None:
+        return hit
+
+    meta = _read_photo(path, key[2], header=header)
+    if meta.width is None:
+        return None  # en-tête insuffisant : l'appelant relira le fichier
+    with _cache_lock:
+        _cache[key] = meta
     return meta
 
 
@@ -128,10 +156,18 @@ def has_gps(path: str) -> bool:
 
 
 # --- Photos ---
-def _read_photo(path: str, size: int) -> Metadata:
+def _read_photo(path: str, size: int, header: bytes | None = None) -> Metadata:
+    """Métadonnées d'une photo.
+
+    *header* : premiers octets du fichier, déjà lus par l'appelant. Les
+    dimensions et l'EXIF se trouvent en tête de fichier, il est donc inutile de
+    rouvrir celui-ci — ce qui compte quand les photos sont sur un partage
+    réseau, où chaque ouverture coûte des dizaines de millisecondes.
+    """
     meta = Metadata(path=path, is_video=False, size=size)
     try:
-        with Image.open(path) as img:
+        source = io.BytesIO(header) if header is not None else path
+        with Image.open(source) as img:
             meta.width, meta.height = img.size
             exif = img.getexif()
     except Exception:  # noqa: BLE001 — fichier illisible : métadonnées vides

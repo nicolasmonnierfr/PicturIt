@@ -80,6 +80,15 @@ _MONTHS_FR = (
 # Libellé de section pour les médias sans date de prise de vue (regroup. date).
 _NO_DATE_LABEL = "Sans date"
 
+# Séparateur de section : bandeau clair à texte gris, qui tranche franchement
+# sur les vignettes et découpe la galerie. La marge haute l'éloigne des
+# vignettes de la section précédente, pour qu'il se rattache visuellement à
+# celle qu'il ouvre et non à celle qu'il termine.
+_SECTION_HEADER_STYLE = (
+    "background:#f2f2f2; color:#4a4a4a; font-weight:bold; font-size:14px;"
+    " padding:7px 12px; border-radius:3px; margin-top:16px;"
+)
+
 
 def _filter_label(texte: str) -> QLabel:
     """Libellé posé devant un menu de la barre d'outils.
@@ -768,9 +777,7 @@ class GalleryView(QWidget):
     def _create_section(self, name: str, sort_key: tuple) -> _Section:
         """Crée une section (en-tête + vue) insérée à sa place triée."""
         header = QLabel()
-        header.setStyleSheet(
-            "background:#3a3a3a; padding:4px; font-weight:bold; border-radius:3px;"
-        )
+        header.setStyleSheet(_SECTION_HEADER_STYLE)
 
         model = QStandardItemModel(self)
         view = _SectionListView(self._thumb_size)

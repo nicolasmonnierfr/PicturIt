@@ -42,10 +42,10 @@ from ui.gallery_view import MIME_PATHS
 MAX_PINNED = 9
 
 # Bouton « Inclure les sous-dossiers » : enfoncé quand le parcours récursif
-# est actif. L'ambre reprend celui des autres états à conséquence de l'app
-# (badge « sans GPS », mode « Remplacer ») — ici un scan potentiellement long.
+# est actif. Le fond bleu de l'état enfoncé signale déjà l'activation ; le texte
+# reste blanc, l'ambre s'y lisant mal, et seul le gras vient l'appuyer.
 _RECURSIVE_BUTTON_STYLE = (
-    "QPushButton:checked { color:#eb911e; font-weight:bold; }"
+    "QPushButton:checked { color:#ffffff; font-weight:bold; }"
 )
 
 # Rôle de données stockant le chemin absolu sur un item d'accès rapide.

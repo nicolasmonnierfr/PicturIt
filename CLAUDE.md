@@ -25,7 +25,9 @@ ffprobe** (dans `./bin/`). **Zéro persistance disque** (tout en RAM ; seules
   (sinon QtWebEngine casse).
 - Build : `pyinstaller build.spec --noconfirm --clean` → `dist/PicturIt/`.
 - Installeur : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.1.0.exe`.
-- ⚠️ Pas de suite de tests versionnée (validation par scripts offscreen jetables).
+- Tests : `.\.venv\Scripts\python.exe -m pytest` (dossier `tests/`, ~190 tests sur
+  `core/`, sans Qt). Couverture : `-m pytest --cov=core --cov-report=term-missing`.
+  ⚠️ `ui/` et `core/thumbnails.py` ne sont **pas** couverts (validation manuelle).
 
 ## Conventions
 - Commentaires et libellés UI **en français**.

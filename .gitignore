@@ -15,6 +15,11 @@ __pycache__/
 bin/ffmpeg.exe
 bin/ffprobe.exe
 
+# Artefacts de test (harnais pytest)
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Fichiers temporaires / captures / logs jetables
 _*.png
 _*.log

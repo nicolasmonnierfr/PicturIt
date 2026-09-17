@@ -52,6 +52,16 @@ Hors périmètre v1 (SPEC) :
 
 ## LIVRÉ
 -------------------------------------------------------------------------------
+Professionnalisation (séance 3) :
+- [x] Publication sur GitHub (dépôt public nicolasmonnierfr/PicturIt), tags
+      v1.0.0 / v1.0.1 / v1.1.0 et Release v1.1.0 avec l'installeur en asset.
+- [x] Harnais de tests `tests/` (pytest) : ~190 tests sur `core/`, 94 % de
+      couverture, sans Qt ni ffmpeg (binaires simulés). Voir ARCHITECTURE §8.
+- [x] Correctif `operations.rename` : le garde-fou « nom inchangé » était
+      inopérant (`_unique_dest` voyait le fichier comme sa propre collision),
+      d'où un suffixe `_1` parasite en renommant un fichier vers son nom actuel.
+      Bug trouvé par le nouveau harnais.
+
 Correctifs (séance de bugfix) :
 - [x] Perf chargement galerie : `load_qimage` utilise `Image.draft` (décodage
       JPEG à échelle réduite) + conversion PIL→QImage directe (plus de round-trip

@@ -143,9 +143,13 @@ class OperationManager:
         for src, new_name in items:
             if not os.path.exists(src) or not new_name:
                 continue
-            dst = _unique_dest(os.path.dirname(src), new_name)
-            if os.path.normcase(dst) == os.path.normcase(src):
+            folder = os.path.dirname(src)
+            # Le test « nom inchangé » doit précéder _unique_dest : sinon le
+            # fichier se voit lui-même comme une collision et récolte un suffixe
+            # (_1, _2…) à chaque renommage vers son propre nom.
+            if os.path.normcase(os.path.join(folder, new_name)) == os.path.normcase(src):
                 continue  # nom inchangé
+            dst = _unique_dest(folder, new_name)
             try:
                 os.rename(src, dst)
             except OSError:

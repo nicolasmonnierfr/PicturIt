@@ -181,6 +181,38 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
 - **Build** : `pyinstaller build.spec --noconfirm --clean` → `dist/PicturIt/`.
 - **Installeur** : `ISCC.exe installer.iss` → `installer_output/PicturIt-Setup-1.1.0.exe`.
 
-> ⚠️ Aucun harnais de tests automatisés n'est versionné : la validation s'est
-> faite par scripts offscreen jetables + captures. Un dossier `tests/` serait un
-> bon ajout pour la session de bugfix.
+### Tests automatisés (`tests/`)
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest                              # ~190 tests, ~3 s
+.\.venv\Scripts\python.exe -m pytest --cov=core --cov-report=term-missing
+```
+
+Périmètre : **`core/` uniquement**, soit la logique métier sans Qt (94 % de
+couverture). Aucun test ne crée de `QApplication` : le harnais reste rapide et
+n'a besoin ni d'écran ni de QtWebEngine.
+
+| Fichier | Couvre | Points notables |
+|---|---|---|
+| `test_geo.py` | `geo` | les **deux** formats de rationnels (piexif + IFDRational), piège §6.3 |
+| `test_scanner.py` | `scanner` | extensions, ordre des sections, scan récursif |
+| `test_metadata.py` | `metadata` | EXIF, EXIF étendu, **ffprobe simulé**, cache et invalidation (§6.16) |
+| `test_duplicates.py` | `duplicates` | identiques/similaires, seuils, priorité, piège §6.4 |
+| `test_operations.py` | `operations` | move/copy/rename/trash, pile d'annulation LIFO, journal |
+| `test_editing.py` | `editing` | rotation JPEG **vérifiée sans perte** (pixels stockés inchangés) |
+| `test_fftools.py` | `fftools` | résolution des binaires, timeout, binaire absent |
+
+Deux règles à respecter en ajoutant des tests :
+- **Jamais la vraie corbeille** : la fixture `fake_trash` (conftest) remplace
+  `send2trash`. Un test qui appelle `operations.trash` sans elle polluerait la
+  corbeille de l'utilisateur.
+- **Cache de métadonnées** : vidé automatiquement autour de chaque test (fixture
+  `_clear_metadata_cache`), car c'est un état global de module.
+
+Le conftest fournit `write_photo()` (JPEG de test daté/géolocalisé via piexif)
+et `pad_to()` (égalise la taille de deux fichiers de contenus différents, pour
+reproduire le cas « identique par taille + date »).
+
+**Non couvert** : `core/thumbnails.py` (Qt) et tout `ui/` — validés manuellement,
+ou par scripts offscreen jetables (`QT_QPA_PLATFORM=offscreen` +
+`AA_ShareOpenGLContexts` avant `QApplication`).

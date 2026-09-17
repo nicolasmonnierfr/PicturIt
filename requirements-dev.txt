@@ -1,0 +1,7 @@
+# Dépendances de développement de PicturIt (tests).
+# Les dépendances de l'application elle-même sont dans requirements.txt.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+pytest>=8.0            # harnais de tests (dossier tests/)
+pytest-cov>=5.0        # mesure de couverture (--cov=core)

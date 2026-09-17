@@ -28,6 +28,9 @@ python -m venv .venv
 
 # Installer les dépendances
 pip install -r requirements.txt
+
+# Optionnel : outillage de développement (tests)
+pip install -r requirements-dev.txt
 ```
 
 ## Lancement
@@ -35,6 +38,26 @@ pip install -r requirements.txt
 ```powershell
 .\.venv\Scripts\python.exe main.py
 ```
+
+## Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Environ 190 tests couvrent `core/` (logique métier) à 94 %, en 3 secondes.
+Aucun test ne crée de fenêtre Qt : ni écran ni QtWebEngine ne sont nécessaires,
+et ffmpeg/ffprobe sont simulés — la suite tourne donc sur une machine nue.
+
+Couverture détaillée :
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest --cov=core --cov-report=term-missing
+```
+
+L'interface (`ui/`) et `core/thumbnails.py` restent validés manuellement ; voir
+[ARCHITECTURE.md](ARCHITECTURE.md#tests-automatisés-tests) pour le détail du
+harnais et les règles à suivre en ajoutant des tests.
 
 ## Binaires ffmpeg / ffprobe
 

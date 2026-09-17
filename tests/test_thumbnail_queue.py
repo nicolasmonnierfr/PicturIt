@@ -241,6 +241,52 @@ class TestVidage:
         assert thumbnails.HEADER_STRATEGY.should_try() is True
 
 
+class TestArret:
+    """Fermeture de l'application : les workers ne doivent plus rien émettre.
+
+    Qt détruit les objets récepteurs pendant que des workers tournent encore.
+    La fenêtre ne peut pas se contenter de les attendre : sur un partage
+    réseau, plusieurs dizaines de lectures de centaines de millisecondes sont
+    en vol. Sans ce garde-fou, la fermeture crachait des « Signal source has
+    been deleted ».
+    """
+
+    @pytest.fixture(autouse=True)
+    def _drapeau_neuf(self):
+        thumbnails._shutting_down.clear()
+        yield
+        thumbnails._shutting_down.clear()
+
+    def test_drapeau_baisse_par_defaut(self):
+        assert thumbnails.is_shutting_down() is False
+
+    def test_request_shutdown_leve_le_drapeau(self):
+        thumbnails.request_shutdown()
+        assert thumbnails.is_shutting_down() is True
+
+    def test_le_worker_renonce(self):
+        """Un worker lancé après la demande d'arrêt n'émet rien."""
+        worker = thumbnails._ThumbnailWorker("photo.jpg", False, 160)
+        recus = []
+        worker.signals.finished.connect(lambda *a: recus.append(a))
+        worker.signals.failed.connect(lambda *a: recus.append(a))
+
+        thumbnails.request_shutdown()
+        worker.run()
+        assert recus == []
+
+    def test_le_worker_emet_normalement_sinon(self, tmp_path):
+        """Hors arrêt, un fichier illisible produit bien un signal d'échec."""
+        chemin = tmp_path / "corrompu.jpg"
+        chemin.write_bytes(b"pas une image")
+        worker = thumbnails._ThumbnailWorker(str(chemin), False, 160)
+        recus = []
+        worker.signals.failed.connect(lambda *a: recus.append(a))
+
+        worker.run()
+        assert len(recus) == 1
+
+
 class TestDimensionnementDuPool:
     """Le nombre de threads vise l'attente réseau, pas le calcul."""
 

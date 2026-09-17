@@ -50,6 +50,21 @@ _ = imaging.HEIF_SUPPORTED
 # Taille (côté max) des vignettes générées.
 THUMB_SIZE = 160
 
+# Arrêt en cours : les workers déjà lancés cessent d'émettre vers des objets
+# que Qt s'apprête à détruire. La fenêtre ne peut pas simplement les
+# attendre : une lecture sur partage réseau prend des centaines de
+# millisecondes, et il y en a plusieurs dizaines en vol.
+_shutting_down = threading.Event()
+
+
+def request_shutdown() -> None:
+    """Prévient les workers que l'application se ferme."""
+    _shutting_down.set()
+
+
+def is_shutting_down() -> bool:
+    return _shutting_down.is_set()
+
 
 def _pool_threads() -> int:
     """Nombre de threads de génération des vignettes.
@@ -345,6 +360,8 @@ class _ThumbnailWorker(QRunnable):
         self.signals = _ThumbnailSignals()
 
     def run(self) -> None:
+        if is_shutting_down():
+            return
         meta = None
         if self._is_video:
             qimg = extract_video_frame(self._path, self._size)
@@ -389,10 +406,17 @@ class _ThumbnailWorker(QRunnable):
         except Exception:  # noqa: BLE001
             pass
 
-        if qimg is None:
-            self.signals.failed.emit(self._path, has_gps, lat, lon)
-        else:
-            self.signals.finished.emit(self._path, qimg, has_gps, lat, lon)
+        if is_shutting_down():
+            return  # l'application ferme : plus personne pour recevoir
+        try:
+            if qimg is None:
+                self.signals.failed.emit(self._path, has_gps, lat, lon)
+            else:
+                self.signals.finished.emit(self._path, qimg, has_gps, lat, lon)
+        except RuntimeError:
+            # « Signal source has been deleted » : Qt a détruit le destinataire
+            # entre le test ci-dessus et l'émission. Rien à sauver, rien à dire.
+            pass
 
 
 class ThumbnailManager(QObject):

@@ -580,6 +580,11 @@ class MainWindow(QMainWindow):
         # « Signal source has been deleted » à la destruction de Qt.
         from PySide6.QtCore import QThreadPool
 
+        from core import thumbnails
+
+        # Prévenir avant d'attendre : les workers en vol renoncent d'eux-mêmes
+        # au lieu d'émettre vers des objets que Qt va détruire.
+        thumbnails.request_shutdown()
         QThreadPool.globalInstance().clear()
         QThreadPool.globalInstance().waitForDone(2000)
 

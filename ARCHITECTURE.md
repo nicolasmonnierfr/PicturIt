@@ -125,8 +125,12 @@ via `media_selected`). Échap → reparente l'aperçu dans le splitter (colonne 
   synchrone jusqu'à la v1.1.1 : un clic sur une racine de disque figeait
   l'application plusieurs minutes. Toute nouvelle opération qui parcourt le
   disque doit passer par un worker.
-- `closeEvent` fait `QThreadPool.clear()` + `waitForDone(2000)` pour éviter les
-  erreurs « Signal source has been deleted » à l'arrêt.
+- `closeEvent` **prévient** les workers (`thumbnails.request_shutdown()`) avant
+  de faire `QThreadPool.clear()` + `waitForDone(2000)`. Attendre ne suffit
+  pas : sur un partage réseau, des dizaines de lectures de plusieurs centaines
+  de millisecondes sont en vol et dépassent le délai, d'où les « Signal source
+  has been deleted » à l'arrêt. Les workers consultent le drapeau avant
+  d'émettre, et l'émission reste enveloppée d'un `try/except RuntimeError`.
 
 ---
 

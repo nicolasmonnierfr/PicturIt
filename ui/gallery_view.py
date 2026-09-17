@@ -55,7 +55,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from core import duplicates, metadata, perf, scanner
+from core import duplicates, metadata, perf, scanner, thumbnails
 from core.thumbnails import (
     PRIORITY_VISIBLE_PHOTO,
     PRIORITY_VISIBLE_VIDEO,
@@ -262,7 +262,12 @@ class _ScanWorker(QRunnable):
                 )
         except Exception:  # noqa: BLE001 — dossier illisible : galerie vide, pas de crash
             sections = []
-        self.signals.finished.emit(sections, self._token)
+        if thumbnails.is_shutting_down():
+            return
+        try:
+            self.signals.finished.emit(sections, self._token)
+        except RuntimeError:
+            pass  # destinataire déjà détruit (fermeture de l'application)
 
 
 class _DuplicatesSignals(QObject):

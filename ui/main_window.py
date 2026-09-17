@@ -1,7 +1,8 @@
 """Fenêtre principale — layout 3 colonnes + barre supérieure + barre inférieure.
 
 Orchestre les panneaux et les opérations de tri :
-- Barre supérieure : chemin source, bouton Parcourir, switch Aperçu/Carte.
+- Barre supérieure : chemin source + bouton Parcourir (la bascule
+  Aperçu/Carte est dans la barre du panneau droit).
 - 3 colonnes redimensionnables (QSplitter) : navigation / galerie / panneau droit.
 - Barre inférieure : rappel des raccourcis + barre de progression.
 - Tri : clic/raccourci 1-9/glisser-déposer → déplacer (Shift = copier).
@@ -37,7 +38,6 @@ from ui.gallery_view import GalleryView
 from ui.map_panel import MapPanel
 from ui.nav_panel import NavPanel
 from ui.preview_panel import PreviewPanel
-from ui.widgets import ToggleSlider
 
 
 class MainWindow(QMainWindow):
@@ -89,14 +89,8 @@ class MainWindow(QMainWindow):
         self.browse_button.clicked.connect(self._on_browse)
         top_bar.addWidget(self.browse_button)
 
-        top_bar.addSpacing(20)
-
-        # Mini-slider à deux états : Aperçu (gauche) / Carte (droite).
-        top_bar.addWidget(QLabel("Panneau :"))
-        self.map_switch = ToggleSlider("Aperçu", "Carte")
-        self.map_switch.toggled.connect(self._on_toggle_map)
-        top_bar.addWidget(self.map_switch)
-
+        # La bascule Aperçu/Carte vit désormais dans la barre du panneau droit,
+        # au-dessus de ce qu'elle commande (cf. PreviewPanel.panel_switch).
         return top_bar
 
     # --- 3 colonnes ---
@@ -108,6 +102,8 @@ class MainWindow(QMainWindow):
         self.gallery_view = GalleryView()
         self.preview_panel = PreviewPanel()
         self.map_panel = MapPanel()
+        # Bascule Aperçu/Carte : construite par le panneau droit, pilotée ici.
+        self.map_switch = self.preview_panel.panel_switch
 
         # Colonne centrale : pile galerie (0) / carte agrandie (1).
         self.center_stack = QStackedWidget()
@@ -169,6 +165,7 @@ class MainWindow(QMainWindow):
         self.preview_panel.rotate_requested.connect(self._on_edit_rotate)
         self.preview_panel.crop_committed.connect(self._on_edit_crop)
         self.preview_panel.convert_requested.connect(self._on_edit_convert)
+        self.map_switch.toggled.connect(self._on_toggle_map)
         # Carte ⇄ galerie (sélection bidirectionnelle + marqueurs).
         self.gallery_view.geo_points_changed.connect(self.map_panel.set_points)
         self.gallery_view.selection_changed.connect(self.map_panel.set_highlight)

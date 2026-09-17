@@ -9,6 +9,10 @@ Mode Aperçu :
 
 Mode Carte : conteneur accueillant le MapPanel (injecté par la fenêtre).
 
+La barre du haut (outils d'édition + bascule Aperçu/Carte) est montée **hors**
+de la pile : placée dans la page Aperçu, la bascule disparaîtrait en mode Carte
+et on ne pourrait plus revenir.
+
 Le lecteur vidéo dépend des codecs présents ; tout échec est géré sans planter
 (message « lecture impossible », cf. SPEC 6.5).
 """
@@ -228,12 +232,15 @@ class PreviewPanel(QWidget):
 
         self.stack = QStackedWidget()
 
+        # Barre commune aux deux modes : outils d'édition à gauche, bascule
+        # Aperçu/Carte à droite. Elle est montée **hors** de la pile pour rester
+        # accessible même quand la carte occupe le panneau.
+        self._toolbar = self._build_edit_toolbar()
+
         # --- Mode Aperçu ---
         preview_widget = QWidget()
         preview_layout = QVBoxLayout(preview_widget)
         preview_layout.setContentsMargins(4, 4, 4, 4)
-
-        preview_layout.addLayout(self._build_edit_toolbar())
 
         # Sous-empilement : image zoomable (0) / vidéo (1) / message (2).
         self._media_stack = QStackedWidget()
@@ -272,7 +279,8 @@ class PreviewPanel(QWidget):
         self.stack.addWidget(self.map_container)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 4, 4, 0)
+        layout.addLayout(self._toolbar)
         layout.addWidget(self.stack)
 
         self._set_edit_enabled(False)  # rien de sélectionné au départ
@@ -321,11 +329,10 @@ class PreviewPanel(QWidget):
                   self._btn_crop_apply, self._btn_convert):
             bar.addWidget(b)
 
-        bar.addStretch(1)
-
-        # Mini-slider Remplacer / Copier (au lieu d'un bouton switch).
-        # « Remplacer » écrase l'original sans retour possible : le côté est
-        # signalé en ambre pour qu'on sache toujours dans quel mode on édite.
+        # Remplacer / Copier est accolé aux boutons d'édition : c'est leur
+        # modificateur, il dit où l'opération va écrire. « Remplacer » écrase
+        # l'original sans retour possible, d'où le côté signalé en ambre.
+        bar.addSpacing(10)
         self._mode_switch = ToggleSlider("Remplacer", "Copier", warning_side="left")
         self._mode_switch.setToolTip(
             "Remplacer : écrit sur le fichier d'origine — irréversible, "
@@ -333,6 +340,18 @@ class PreviewPanel(QWidget):
             "Copier : applique les modifications sur une copie « _copie »."
         )
         bar.addWidget(self._mode_switch)
+
+        bar.addStretch(1)
+
+        # Bascule du panneau, à l'opposé : elle ne concerne pas l'édition mais
+        # ce que la colonne affiche. Elle vit dans cette barre parce que celle-ci
+        # est **hors** de la pile Aperçu/Carte : placée dans la page Aperçu, elle
+        # disparaîtrait en mode Carte et on ne pourrait plus revenir.
+        self.panel_switch = ToggleSlider("Aperçu", "Carte")
+        self.panel_switch.setToolTip(
+            "Aperçu : le média sélectionné. Carte : les photos géolocalisées."
+        )
+        bar.addWidget(self.panel_switch)
 
         self._edit_buttons = [
             self._btn_rotate_left, self._btn_rotate_right,
@@ -522,6 +541,14 @@ class PreviewPanel(QWidget):
         self.stack.setCurrentIndex(mode)
         if mode == self.MODE_MAP:
             self._player.pause()
+            # La barre reste affichée pour pouvoir revenir à l'aperçu, mais
+            # l'édition n'a plus de média sur quoi porter.
+            self._set_edit_enabled(False)
+        elif self._current_path is not None:
+            est_video = (
+                os.path.splitext(self._current_path)[1].lower() in VIDEO_EXTENSIONS
+            )
+            self._set_edit_enabled(not est_video)
 
     def show_media(self, path: str) -> None:
         """Affiche le média sélectionné (image zoomable ou lecteur vidéo)."""

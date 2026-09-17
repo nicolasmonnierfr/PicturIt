@@ -41,6 +41,13 @@ from ui.gallery_view import MIME_PATHS
 # Nombre maximum de dossiers cibles épinglés (limite des raccourcis 1-9).
 MAX_PINNED = 9
 
+# Bouton « Inclure les sous-dossiers » : enfoncé quand le parcours récursif
+# est actif. L'ambre reprend celui des autres états à conséquence de l'app
+# (badge « sans GPS », mode « Remplacer ») — ici un scan potentiellement long.
+_RECURSIVE_BUTTON_STYLE = (
+    "QPushButton:checked { color:#eb911e; font-weight:bold; }"
+)
+
 # Rôle de données stockant le chemin absolu sur un item d'accès rapide.
 _PATH_ROLE = Qt.ItemDataRole.UserRole + 1
 
@@ -166,7 +173,11 @@ class NavPanel(QWidget):
 
         # Le parcours récursif est placé juste au-dessus de l'arborescence,
         # là où se fait le choix du dossier, plutôt que dans la barre du haut.
+        # Bouton à deux états plutôt qu'à libellé changeant : il reste enfoncé
+        # tant que les sous-dossiers sont inclus, et son intitulé ne bouge pas.
         self.recursive_button = QPushButton("Inclure les sous-dossiers")
+        self.recursive_button.setCheckable(True)
+        self.recursive_button.setStyleSheet(_RECURSIVE_BUTTON_STYLE)
         self.recursive_button.setToolTip(
             "Parcourir toute l'arborescence du dossier source.\n"
             "Peut prendre plusieurs minutes sur un disque entier ; "
@@ -233,10 +244,12 @@ class NavPanel(QWidget):
         self.recursive_button.setEnabled(available)
 
     def set_recursive_state(self, recursive: bool) -> None:
-        """Le bouton bascule entre étendre l'affichage et revenir au dossier seul."""
-        self.recursive_button.setText(
-            "Ce dossier seulement" if recursive else "Inclure les sous-dossiers"
-        )
+        """Reflète l'état réel de la galerie sur le bouton.
+
+        ``setChecked`` n'émet pas ``clicked`` : appeler cette méthode depuis la
+        fenêtre principale ne relance donc aucun scan.
+        """
+        self.recursive_button.setChecked(recursive)
 
     # --- Arborescence (source + épinglage) ---
     def _on_tree_clicked(self, index) -> None:

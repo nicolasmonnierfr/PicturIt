@@ -218,6 +218,8 @@ class MainWindow(QMainWindow):
         """Bouton de l'arborescence : étend le scan, ou revient au dossier seul."""
         folder = self.gallery_view.source_root()
         if not folder:
+            # Rien à parcourir : le bouton ne doit pas rester enfoncé.
+            self.nav_panel.set_recursive_state(False)
             return
         # Une analyse en cours est d'abord interrompue (elle deviendrait caduque).
         if self.gallery_view.is_scanning():

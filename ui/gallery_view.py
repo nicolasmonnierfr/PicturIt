@@ -86,7 +86,7 @@ _NO_DATE_LABEL = "Sans date"
 # celle qu'il ouvre et non à celle qu'il termine.
 _SECTION_HEADER_STYLE = (
     "background:#f2f2f2; color:#4a4a4a; font-weight:bold; font-size:14px;"
-    " padding:7px 12px; border-radius:3px; margin-top:16px;"
+    " padding:7px 12px; border-radius:3px; margin-top:24px;"
 )
 
 
@@ -407,7 +407,8 @@ class GalleryView(QWidget):
             "font-size:17px; font-weight:bold; padding:2px 4px 6px 4px;"
         )
         self._folder_label.setVisible(False)  # rien à annoncer au démarrage
-        layout.addWidget(self._folder_label)
+        # Ajouté au layout plus bas : le titre se place **sous** la barre de
+        # filtres, au plus près des vignettes qu'il désigne.
 
         # --- Barre d'outils de la galerie (compacte : libellés en infobulles) ---
         toolbar = QHBoxLayout()
@@ -507,6 +508,7 @@ class GalleryView(QWidget):
         self.similars_switch.toggled.connect(self._on_dup_filter_changed)
         toolbar.addWidget(self.similars_switch)
         layout.addLayout(toolbar)
+        layout.addWidget(self._folder_label)
 
         # --- Bannière de filtre (affichée quand un filtrage carte est actif) ---
         self._filter_banner = QFrame()
